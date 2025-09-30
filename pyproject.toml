@@ -8,9 +8,13 @@ authors = [
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = [
-]
+packages = [{ include = "mxm_refdata" }]
 
+[tool.poetry.dependencies]
+python = ">=3.13,<4.0"
+pandas = ">=2.3.3,<3.0.0"
+sqlalchemy = ">=2.0.43,<3.0.0"
+exchange-calendars = { version = "^4.11.1", markers = "python_version >= '3.10' and python_version < '4.0'" }
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
@@ -21,11 +25,15 @@ black = "^25.9.0"
 ruff = "^0.13.2"
 isort = "^6.0.1"
 pytest = "^8.4.2"
+pytest-mock = "^3.15.1"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
 
 # -------------------------
 # Coding standards
 # -------------------------
-
 [tool.ruff]
 line-length = 88
 target-version = "py312"
@@ -43,8 +51,7 @@ target-version = ["py312"]
 [tool.isort]
 profile = "black"
 line_length = 88
-known_first_party = ["mxm_config"]
-known_third_party = ["omegaconf"]
+known_first_party = ["mxm_refdata"]
 combine_as_imports = true
 
 [tool.pyright]
