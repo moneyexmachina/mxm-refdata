@@ -1,36 +1,60 @@
 import os
+from pathlib import Path
 
 from mxm_refdata.utils.config import load_config
 
 
+def _clear_env(var: str):
+    """Helper to temporarily clear an environment variable."""
+    original = os.getenv(var)
+    if original is not None:
+        del os.environ[var]
+    return original
+
+
+def _restore_env(var: str, value: str | None):
+    if value is not None:
+        os.environ[var] = value
+
+
 def test_load_config_default():
-    """Test loading config with default values."""
-    # Clear the DATABASE_URL environment variable if set
-    original_value = os.getenv("SQL_DB_URL")
-    if original_value is not None:
-        del os.environ["SQL_DB_URL"]
+    """Default config uses a stable, user-writable SQLite location."""
+    original = _clear_env("SQL_DB_URL")
 
-    # Load config
-    config = load_config()
+    try:
+        cfg = load_config()
 
-    # Assert the default value
-    assert config.SQL_DB_URL == "sqlite:///data/refdata.db"
+        # Must be SQLite
+        assert cfg.SQL_DB_URL.startswith("sqlite:///")
 
-    # Restore the original value
-    if original_value:
-        os.environ["SQL_DB_URL"] = original_value
+        # Must not be process-relative (old fragile default)
+        assert cfg.SQL_DB_URL != "sqlite:///data/refdata.db"
+
+        # Extract filesystem path
+        db_path = Path(cfg.SQL_DB_URL.removeprefix("sqlite:///"))
+
+        # Path should be absolute and deterministic
+        assert db_path.is_absolute()
+        assert db_path.name == "refdata.db"
+
+    finally:
+        _restore_env("SQL_DB_URL", original)
 
 
 def test_load_config_env_variable():
-    """Test loading config with DATABASE_URL set in environment."""
-    # Set a custom DATABASE_URL environment variable
-    os.environ["SQL_DB_URL"] = "postgresql://test_user:test_password@localhost/test_db"
+    """Environment variable overrides the default."""
+    original = _clear_env("SQL_DB_URL")
 
-    # Load config
-    config = load_config()
+    try:
+        os.environ["SQL_DB_URL"] = (
+            "postgresql://test_user:test_password@localhost/test_db"
+        )
 
-    # Assert the value from the environment variable
-    assert config.SQL_DB_URL == "postgresql://test_user:test_password@localhost/test_db"
+        cfg = load_config()
 
-    # Clean up the environment variable
-    del os.environ["SQL_DB_URL"]
+        assert (
+            cfg.SQL_DB_URL == "postgresql://test_user:test_password@localhost/test_db"
+        )
+
+    finally:
+        _restore_env("SQL_DB_URL", original)

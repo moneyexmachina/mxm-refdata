@@ -13,6 +13,7 @@ from mxm_refdata.services.futures_contract_factory import FuturesContractFactory
 from mxm_refdata.services.futures_product_factory import FuturesProductFactory
 from mxm_refdata.services.period_factory import PeriodFactory
 from mxm_refdata.utils.config import load_config
+from mxm_refdata.utils.resources import futures_products_csv_path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -107,7 +108,7 @@ class RefDataService:
 
     logging.info("Full instrument setup completed successfully.")
 
-    def initialise_futures_products(self, csv_file_path: str = None) -> None:
+    def initialise_futures_products(self, csv_file_path: str | None = None) -> None:
         """
         Initialize the database with futures products from a CSV file.
 
@@ -124,12 +125,11 @@ class RefDataService:
             )
 
         if csv_file_path is None:
-            config = load_config()
-            csv_file_path = (
-                config.REFDATA_FUTURES_PRODUCTS_CSV_PATH or "data/futures_products.csv"
-            )
-
-        products = self.product_factory.initialise_from_csv(csv_file_path)
+            cfg = load_config()
+            with futures_products_csv_path(cfg) as csv_file_path:
+                products = self.product_factory.initialise_from_csv(csv_file_path)
+        else:
+            products = self.product_factory.initialise_from_csv(csv_file_path)
 
         with self.session_manager.db_session_scope() as session:
             for product in products:
