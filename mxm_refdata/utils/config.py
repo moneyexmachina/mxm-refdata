@@ -18,6 +18,8 @@ class Config(BaseSettings):
     # Overrideable via env; default is safe when imported as a dependency
     SQL_DB_URL: str = _default_sqlite_db_url()
 
+    REFDATA_DB_MODE: str = "buildable"  # "buildable" | "managed"
+
     # None means "use packaged CSV resource"
     REFDATA_FUTURES_PRODUCTS_CSV_PATH: str | None = None
 

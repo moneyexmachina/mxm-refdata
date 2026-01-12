@@ -16,16 +16,10 @@ from mxm_refdata.models.products.futures_product import FuturesProduct
 @pytest.fixture(scope="module")
 def db_session_manager():
     """Provides an instance of SQLSessionManager using an in-memory SQLite database."""
-    test_engine = create_engine("sqlite:///:memory:")  # In-memory DB for tests
+    test_engine = create_engine("sqlite:///:memory:")  # In-memory DB for unit tests
     session_manager = SQLSessionManager(engine=test_engine)
     session_manager.init_db()
     return session_manager
-
-
-@pytest.fixture
-def ref_data_api(db_session_manager):
-    """Fixture to create an instance of RefDataAPI."""
-    return RefDataAPI(session_manager=db_session_manager)
 
 
 @pytest.fixture(autouse=True)
@@ -36,11 +30,28 @@ def reset_db(db_session_manager):
 
 
 @pytest.fixture
+def ref_data_api(db_session_manager, monkeypatch):
+    """
+    Fixture to create an instance of RefDataAPI for unit tests.
+
+    These unit tests focus on query correctness & caching. We explicitly disable
+    auto-bootstrap/initialisation here to avoid altering DB state and to keep the
+    caching assertions stable and meaningful.
+    """
+    # Patch the bootstrap hook used inside RefDataAPI methods (if present)
+    # This patch is intentionally scoped to tests using this fixture.
+    monkeypatch.setattr(
+        "mxm_refdata.api.ref_data_api.ensure_refdata_ready",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
+    return RefDataAPI(session_manager=db_session_manager)
+
+
+@pytest.fixture
 def mock_data(db_session_manager):
     """Pre-populates the database with business model objects, ensuring conversion is tested."""
-
     with db_session_manager.db_session_scope() as session:
-        # Create a business model product
         product = FuturesProduct(
             product_id="gold_fut",
             venue="CME",
@@ -58,9 +69,8 @@ def mock_data(db_session_manager):
             tick_size=0.1,
             tick_value=10.0,
         )
-        session.add(obj_to_orm(product))  # Convert to ORM and insert
+        session.add(obj_to_orm(product))
 
-        # Create a business model period
         period = Period(
             period_id="Jan-2025",
             period_type="MONTH",
@@ -69,7 +79,6 @@ def mock_data(db_session_manager):
         )
         session.add(obj_to_orm(period))
 
-        # Create a business model contract
         contract = FuturesContract(
             product_id="gold_fut",
             period_id="Jan-2025",
@@ -106,6 +115,43 @@ def test_caching_behavior(ref_data_api, mock_data, mocker):
     ref_data_api.get_product_by_id("gold_fut")
     assert spy.call_count == 1, "Expected a database call on first query."
 
-    # Second query should use cache
+    # Second query should use cache (no additional db_session_scope calls)
     ref_data_api.get_product_by_id("gold_fut")
     assert spy.call_count == 1, "Expected cached data, no additional DB calls."
+
+
+# -------------------------------------------------------------------------
+# Bootstrap/mode behaviour tests (separate from unit query/caching tests)
+# -------------------------------------------------------------------------
+
+
+def test_auto_bootstrap_buildable(tmp_path, monkeypatch):
+    """
+    In buildable mode, RefDataAPI should materialise the refdata DB on first use
+    when it is missing/empty.
+    """
+    db_path = tmp_path / "refdata" / "refdata.db"
+    monkeypatch.setenv("SQL_DB_URL", f"sqlite:///{db_path}")
+    monkeypatch.setenv("REFDATA_DB_MODE", "buildable")
+
+    api = RefDataAPI()
+    products = api.get_all_products()
+
+    assert products, "Expected non-empty product list after auto-bootstrap."
+    assert db_path.exists(), "Expected SQLite DB file to be created."
+
+
+def test_auto_bootstrap_refused_managed(tmp_path, monkeypatch):
+    """
+    In managed mode, RefDataAPI must refuse to auto-create an empty/missing DB.
+    """
+    db_path = tmp_path / "refdata" / "refdata.db"
+    monkeypatch.setenv("SQL_DB_URL", f"sqlite:///{db_path}")
+    monkeypatch.setenv("REFDATA_DB_MODE", "managed")
+
+    # Import here to avoid coupling unit tests to bootstrap internals unless needed
+    from mxm_refdata.services.bootstrap import RefDataNotInitialisedError
+
+    api = RefDataAPI()
+    with pytest.raises(RefDataNotInitialisedError):
+        api.get_all_products()

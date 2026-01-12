@@ -106,7 +106,7 @@ class RefDataService:
         # Step 3: Generate and store contracts for each product
         self.initialise_futures_contracts(start_date=start_date, end_date=end_date)
 
-    logging.info("Full instrument setup completed successfully.")
+        logging.info("Full instrument setup completed successfully.")
 
     def initialise_futures_products(self, csv_file_path: str | None = None) -> None:
         """

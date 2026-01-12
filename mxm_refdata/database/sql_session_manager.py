@@ -2,7 +2,8 @@
 
 import logging
 from contextlib import contextmanager
-from typing import Callable, Optional
+from pathlib import Path
+from typing import Callable
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -19,8 +20,9 @@ class SQLSessionManager:
 
     def __init__(
         self,
-        engine: Optional[Engine] = None,
-        session_factory: Optional[Callable[[], Session]] = None,
+        db_url: str | None = None,
+        engine: Engine | None = None,
+        session_factory: Callable[[], Session] | None = None,
     ):
         """
         Initialize the SQLSessionManager with a specific engine and session factory.
@@ -30,7 +32,12 @@ class SQLSessionManager:
             session_factory (Optional[Callable[[], Session]]): A callable that provides new sessions.
         """
         config = load_config()
-        self.engine: Engine = engine or create_engine(config.SQL_DB_URL, echo=True)
+        sql_db_url = db_url or config.SQL_DB_URL
+
+        # Ensure sqlite parent directory exists before engine creation
+        _ensure_sqlite_parent_dir(sql_db_url)
+
+        self.engine: Engine = engine or create_engine(sql_db_url, echo=False)
         self.session_factory: Callable[[], Session] = session_factory or sessionmaker(
             autocommit=False, autoflush=False, bind=self.engine
         )
@@ -102,3 +109,27 @@ class SQLSessionManager:
         except Exception as e:
             logging.error(f"Database connection check failed: {e}")
             return False
+
+
+def _ensure_sqlite_parent_dir(sql_db_url: str) -> None:
+    """
+    Ensure the parent directory exists for sqlite database URLs.
+
+    Only applies to absolute-path sqlite URLs of the form:
+        sqlite:////absolute/path/to/db.sqlite
+
+    Relative sqlite paths are intentionally not supported as defaults.
+    """
+    prefix = "sqlite:///"
+    if not sql_db_url.startswith(prefix):
+        return
+
+    raw_path = sql_db_url[len(prefix) :]
+    if not raw_path:
+        return
+
+    db_path = Path(raw_path)
+
+    # Only create directories for absolute paths
+    if db_path.is_absolute():
+        db_path.parent.mkdir(parents=True, exist_ok=True)
