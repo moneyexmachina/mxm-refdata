@@ -9,6 +9,8 @@ license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.13"
 packages = [{ include = "mxm_refdata" }]
+include = ["mxm_refdata/data/*"]
+
 
 [tool.poetry.dependencies]
 python = ">=3.13,<4.0"
