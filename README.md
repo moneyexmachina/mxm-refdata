@@ -1,28 +1,99 @@
 # mxm-refdata
 
-Canonical reference data package for the [Money Ex Machina](https://moneyexmachina.com) ecosystem.  
-Provides identifiers, metadata, and lifecycle rules for instruments such as **futures contracts** and (planned) **ETFs**, ensuring consistency across MXM modules.
+**Reference data library for the Money Ex Machina (MXM) ecosystem.**
 
----
+`mxm-refdata` provides a canonical, programmatic definition of financial instruments—currently focused on **futures products and contracts**—including identifiers, metadata, and lifecycle rules.  
+It is designed to be **imported as a library by MXM applications** (for example `mxm-v1`), while also offering internal services and scripts for building and maintaining its reference database.
 
-## Features
+## What this package is (and is not)
 
-- **Futures Reference Data (implemented)**  
-  - Define futures products via CSV specifications.  
-  - Generate all contracts programmatically using rules for:  
-    - First day of interest  
-    - Last trading day  
-  - Bundled demo dataset: six futures products + JSON rule sets.  
+### It *is*
+- A **library package** intended to be imported by other applications.
+- The canonical definition of:
+  - futures products (from CSV specifications),
+  - contract generation rules,
+  - trading calendars and lifecycle logic.
+- A provider of a **query API** over a materialised reference database.
 
-- **ETF Reference Data (planned)**  
-  - Universe definition from curated ETF categories.  
-  - CSV import + `ETFProduct` domain model.  
-  - Consistency checks and enrichment via external providers.  
+### It is *not*
+- A standalone trading application.
+- The owner of application-level configuration or state placement.
+- A black-box data dump.
 
-- **Other Components**  
-  - Trading calendar utilities (built on `exchange-calendars`).  
-  - ORM + database integration (SQLAlchemy).  
-  - Caching and config helpers.  
+Application-specific concerns (where state lives, how refdata is shared between components, how updates are governed) belong **above** this package.
+
+## Architecture overview
+
+`mxm-refdata` deliberately separates **three layers**.
+
+### 1. Reference specifications (source of truth)
+
+Small, human-authored files bundled with the package:
+
+- `data/futures_products.csv`
+- JSON rule sets for:
+  - first day of interest
+  - last trading day
+
+These files define *what exists* and *how contracts are generated*.  
+They are stable, version-controlled, and part of the package distribution.
+
+### 2. Materialised reference database (derived state)
+
+From the specifications, `mxm-refdata` can materialise a SQLite database containing:
+
+- futures products
+- all generated contracts
+- periods and lifecycle dates
+- indices for efficient querying
+
+This database is **derived state**:
+- it can be rebuilt from the specifications,
+- but it may later become **managed and curated** (see modes below).
+
+The database exists to avoid regenerating tens or hundreds of thousands of contracts on every run.
+
+### 3. Public query API (“shopwindow”)
+
+The public entrypoint for consumers is the **read-only API**:
+
+- `mxm_refdata.api.RefDataAPI`
+
+It provides cached, high-level queries such as:
+- list all products
+- retrieve contracts for a product
+- resolve active contracts on a given date
+
+Consumers should use this API rather than internal services.
+
+## Operating modes
+
+`mxm-refdata` supports two conceptual modes of operation.  
+Only **Buildable mode** is expected to be used during early development and MVP work.
+
+### Buildable mode (default)
+
+- The reference database is treated as a **materialised cache**.
+- If the database does not exist or is empty, it may be **automatically created** from the packaged specifications.
+- Suitable for:
+  - development
+  - CI
+  - local experimentation
+  - early MXM MVP integration
+
+This mode prioritises *usability and reproducibility*.
+
+### Managed mode (planned / opt-in)
+
+- The reference database is treated as **authoritative state**.
+- Automatic creation or rebuilding is **forbidden**.
+- Updates must be performed explicitly via management services or scripts.
+- Intended for:
+  - curated reference data
+  - reconciliation against external providers
+  - audited, long-lived deployments
+
+Managed mode will be enabled via configuration once governance workflows are in place.
 
 ## Installation
 
@@ -34,38 +105,66 @@ poetry install
 ```
 
 
-## Quickstart
+## Quickstart (library usage)
+
+The recommended entrypoint for consumers is the **query API**.
 
 ```python
-from mxm_refdata.services.ref_data_service import RefDataService
+from mxm_refdata.api.ref_data_api import RefDataAPI
 
-service = RefDataService()
+api = RefDataAPI()
 
-# list available futures products (demo set)
-print(service.list_products())
-
-# generate contracts for a product
-contracts = service.generate_contracts("comex_gold_futures")
-for c in contracts[:3]:
-    print(c.symbol, c.first_trade_date, c.last_trade_date)
+# list available futures products (demo dataset)
+products = api.get_all_products()
+for p in products:
+    print(p.product_id, p.exchange, p.currency)
 ```
 
+On first use, in *buildable mode*, the reference database will be materialised automatically from the packaged specifications.
+
+Subsequent calls reuse the existing database.
+
+## Internal services (advanced / maintenance)
+
+The package also contains **internal services** for building and maintaining the reference database:
+
+- `mxm_refdata.services.RefDataService`
+- CLI-style scripts under `mxm_refdata/scripts/`
+
+These are intended for:
+- explicit initialisation
+- rebuilding reference data
+- future reconciliation workflows
+
+They are **not** the recommended entrypoint for application code.
+
+## Configuration
+
+For now, `mxm-refdata` ships with a minimal internal configuration layer.
+
+Key settings include:
+- database location (SQLite URL)
+- operating mode (`buildable` vs `managed`)
+- optional overrides for specification file paths
+
+In the MXM ecosystem, these concerns will eventually be owned by a higher-level configuration system (for example `mxm-config`), with `mxm-refdata` behaving purely as a configurable library.
 
 ## Documentation
 
-- [Design Document](docs/design.md): Architecture, scope, and roadmap.  
-- API reference: To be generated as part of v0 cleanup.  
-
+- `docs/design.md` — architecture, scope, and roadmap
+- `docs/package_audit.md` — technical audit and known limitations
 
 ## Development
 
 ### Setup
+
 ```bash
 poetry install
 poetry run pytest
 ```
 
-### Code Quality
+### Code quality
+
 ```bash
 poetry run black .
 poetry run isort .
@@ -73,14 +172,15 @@ poetry run ruff check .
 poetry run pyright
 ```
 
-### Contribution
-- Add type hints + Google-style docstrings.  
-- Keep tests green (`pytest`).  
-- Document new features in `docs/design.md`.  
+### Contribution guidelines
+
+- Keep `mxm-refdata` usable as an imported library.
+- Avoid import-time side effects.
+- Add tests for any behaviour that creates or mutates durable state.
+- Document architectural decisions in `docs/design.md`.
 
 ## Roadmap
 
-- **v0**: Consolidate futures functionality, type hints, docstrings, docs.  
-- **v1**: Add ETF universe (CSV import, ETFProduct model, services).  
-- **v2**: External reconciliation with providers (Bloomberg, Refinitiv, JustETF).  
-
+- **v0**: Stabilise futures reference data, packaging, and query API.
+- **v1**: Introduce ETF universe definitions and models.
+- **v2**: External reconciliation, governance, and managed refdata workflows.
