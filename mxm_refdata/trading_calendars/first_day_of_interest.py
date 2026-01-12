@@ -2,6 +2,7 @@
 
 import json
 from datetime import date
+from importlib.resources import files
 
 from mxm_refdata.models import Period, PeriodType
 from mxm_refdata.services.period_factory import PeriodFactory
@@ -9,8 +10,11 @@ from mxm_refdata.trading_calendars.last_trading_day import calculate_last_tradin
 from mxm_refdata.trading_calendars.trading_calendar import TradingCalendar
 
 # Load first_day_of_interest rules from JSON file
-with open("./data/first_day_of_interest_rule.json", "r") as f:
-    FIRST_DAY_OF_INTEREST_RULES = json.load(f)
+FIRST_DAY_OF_INTEREST_RULES = json.loads(
+    files("mxm_refdata")
+    .joinpath("data/first_day_of_interest_rule.json")
+    .read_text(encoding="utf-8")
+)
 
 
 def calculate_first_day_of_interest(

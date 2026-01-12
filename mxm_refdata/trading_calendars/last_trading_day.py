@@ -1,5 +1,6 @@
 import datetime
 import json
+from importlib.resources import files
 
 from mxm_refdata.models.periods import Period
 from mxm_refdata.models.reference_events import ReferenceEvent
@@ -11,12 +12,17 @@ from mxm_refdata.trading_calendars.nth_business_day import (
 from mxm_refdata.trading_calendars.nth_calendar_day_of_period import (
     get_nth_calendar_day_of_period,
 )
-from mxm_refdata.trading_calendars.nth_weekday_of_period import get_nth_weekday_of_period
+from mxm_refdata.trading_calendars.nth_weekday_of_period import (
+    get_nth_weekday_of_period,
+)
 from mxm_refdata.trading_calendars.trading_calendar import TradingCalendar
 
-# Load trading rules from JSON file
-with open("./data/last_trading_rule.json", "r") as f:
-    TRADING_RULES = json.load(f)
+# Load trading rules from packaged JSON file
+TRADING_RULES = json.loads(
+    files("mxm_refdata")
+    .joinpath("data/last_trading_rule.json")
+    .read_text(encoding="utf-8")
+)
 
 
 def calculate_last_trading_day(
