@@ -1,6 +1,6 @@
 [project]
 name = "mxm-refdata"
-version = "0.1.0"
+version = "0.2.0"
 description = "Canonical reference data package for Money-ex-Machina. Provides identifiers, metadata, and mappings (e.g. tickers, exchanges, calendars, etc.) to ensure consistency across MXM modules."
 authors = [
     {name = "mxm",email = "contact@moneyexmachina.com"}
