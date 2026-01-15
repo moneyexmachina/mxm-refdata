@@ -15,8 +15,6 @@ data/
 !mxm_refdata/data/
 !mxm_refdata/data/**
 
-# Poetry
-poetry.lock
 
 # Pytest
 .cache/
