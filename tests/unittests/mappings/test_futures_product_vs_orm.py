@@ -21,7 +21,7 @@ def test_futures_product_to_orm():
         contract_size=100.0,
         valid_period_rule="FGHJKMNQUVXZ",
         listing_rule="Monthly contracts for all months",
-        period_types=PeriodType.MONTH,
+        period_types=(PeriodType.MONTH,),
         settlement=SettlementMethod.PHYSICAL,
         last_trading_rule="3rd last business day of the delivery month",
         expiry_rule="3rd Friday of the delivery month",
@@ -38,7 +38,7 @@ def test_futures_product_to_orm():
     assert orm_instance.settlement == product.settlement
 
 
-def test_futures_product_from_orm():
+def test_futures_product_from_orm() -> None:
     orm_instance = FuturesProductORM(
         product_id="test_product",
         venue="TEST",
@@ -48,7 +48,7 @@ def test_futures_product_from_orm():
         contract_size=100.0,
         valid_period_rule="FGHJKMNQUVXZ",
         listing_rule="Monthly contracts for all months",
-        period_types=PeriodType.MONTH,
+        period_types="MONTH",  # <-- encoded TEXT
         settlement=SettlementMethod.PHYSICAL,
         last_trading_rule="3rd last business day of the delivery month",
         expiry_rule="3rd Friday of the delivery month",
@@ -59,6 +59,7 @@ def test_futures_product_from_orm():
     )
 
     product = futures_product_from_orm(orm_instance)
+    assert product.period_types == (PeriodType.MONTH,)
     assert product.product_id == orm_instance.product_id
     assert product.currency == orm_instance.currency
     assert product.unit == orm_instance.unit

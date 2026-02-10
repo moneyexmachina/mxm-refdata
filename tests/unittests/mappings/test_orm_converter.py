@@ -8,10 +8,17 @@ from mxm_refdata.mappings.orm_converter import (
     obj_to_orm,
     orm_to_obj,
 )
+from mxm_refdata.models import ProductUnit
 from mxm_refdata.models.contracts.futures_contract import FuturesContract
+from mxm_refdata.models.currencies import Currency
 from mxm_refdata.models.orm import FuturesContractORM, FuturesProductORM, PeriodORM
-from mxm_refdata.models.periods import Period
-from mxm_refdata.models.products.futures_product import FuturesProduct
+from mxm_refdata.models.periods import Period, PeriodType
+from mxm_refdata.models.products.futures_product import FuturesProduct, SettlementMethod
+from mxm_refdata.models.units import ProductUnit
+from mxm_refdata.utils.period_types_codec import (
+    decode_period_types,
+    encode_period_types,
+)
 
 
 def test_get_orm_class():
@@ -68,7 +75,7 @@ def test_orm_to_obj():
     assert model_obj.contract_size == orm_obj.contract_size
     assert model_obj.valid_period_rule == orm_obj.valid_period_rule
     assert model_obj.listing_rule == orm_obj.listing_rule
-    assert model_obj.period_types == orm_obj.period_types
+    assert model_obj.period_types == decode_period_types(orm_obj.period_types)
     assert model_obj.settlement == orm_obj.settlement
     assert model_obj.last_trading_rule == orm_obj.last_trading_rule
     assert model_obj.expiry_rule == orm_obj.expiry_rule
@@ -86,13 +93,13 @@ def test_obj_to_orm():
         product_id="gold_fut",
         venue="CME",
         description="Gold Futures",
-        currency="USD",
-        unit="TROY_OUNCE",
+        currency=Currency.USD,
+        unit=ProductUnit.TROY_OUNCE,
         contract_size=100.0,
         valid_period_rule="FGHJKMNQUVXZ",
         listing_rule="Monthly",
-        period_types="MONTH",
-        settlement="PHYSICAL",
+        period_types=(PeriodType.MONTH,),
+        settlement=SettlementMethod.PHYSICAL,
         last_trading_rule="3rd last business day of the delivery month",
         expiry_rule="End of Month",
         trading_calendar="Default Calendar",
@@ -114,7 +121,7 @@ def test_obj_to_orm():
     assert orm_obj.contract_size == model_obj.contract_size
     assert orm_obj.valid_period_rule == model_obj.valid_period_rule
     assert orm_obj.listing_rule == model_obj.listing_rule
-    assert orm_obj.period_types == model_obj.period_types
+    assert orm_obj.period_types == encode_period_types(model_obj.period_types)
     assert orm_obj.settlement == model_obj.settlement
     assert orm_obj.last_trading_rule == model_obj.last_trading_rule
     assert orm_obj.expiry_rule == model_obj.expiry_rule

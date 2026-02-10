@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Union
+from typing import Optional
 
 from mxm_refdata.models.currencies import Currency
 from mxm_refdata.models.periods import PeriodType
@@ -34,7 +34,7 @@ class FuturesProduct:
     listing_rule: (
         str  # Rule for determining available contracts (e.g., "monthly for all months")
     )
-    period_types: Union[PeriodType, List[PeriodType]]  # Single or list of period types
+    period_types: tuple[PeriodType, ...]
     settlement: SettlementMethod  # Settlement type (physical, financial, etc.)
     last_trading_rule: str  # Rule for determining last trading day (e.g., "3rd last business day of delivery month")
     expiry_rule: str  # Rule for determining contract expiry (e.g., "3rd Friday of delivery month")

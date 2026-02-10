@@ -1,8 +1,16 @@
-from sqlalchemy import Column, Date, Enum, String
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+
+from datetime import date
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Date, Enum, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mxm_refdata.models.orm.base import Base
 from mxm_refdata.models.periods import PeriodType
+
+if TYPE_CHECKING:
+    from mxm_refdata.models.orm.futures_contracts import FuturesContractORM
 
 
 class PeriodORM(Base):
@@ -10,9 +18,13 @@ class PeriodORM(Base):
 
     __tablename__ = "periods"
 
-    period_id = Column(String, primary_key=True, unique=True, nullable=False)
-    period_type = Column(Enum(PeriodType), nullable=False)
-    first_date = Column(Date, nullable=False)
-    last_date = Column(Date, nullable=False)
+    period_id: Mapped[str] = mapped_column(
+        String, primary_key=True, unique=True, nullable=False
+    )
+    period_type: Mapped[PeriodType] = mapped_column(Enum(PeriodType), nullable=False)
+    first_date: Mapped[date] = mapped_column(Date, nullable=False)
+    last_date: Mapped[date] = mapped_column(Date, nullable=False)
 
-    contracts = relationship("FuturesContractORM", back_populates="period")
+    contracts: Mapped[list["FuturesContractORM"]] = relationship(
+        "FuturesContractORM", back_populates="period"
+    )

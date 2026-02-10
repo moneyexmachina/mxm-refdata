@@ -1,53 +1,132 @@
-"Factory for FuturesProduct instances."
+"""
+Factory for FuturesProduct instances.
+
+Semantics
+---------
+- This factory provides *interning*: at most one FuturesProduct instance per
+  product_id within this process.
+- It may be initialised from CSV for convenience.
+- It also supports construction from a typed dict payload (useful for tests),
+  but the preferred path is to parse into FuturesProduct and then intern.
+"""
+
+from __future__ import annotations
 
 import threading
-from typing import Dict
+from typing import Any, TypedDict, cast
 
-from mxm_refdata.models.products.futures_product import FuturesProduct
-from mxm_refdata.parsing.futures_products_from_csv import (
-    parse_futures_products_csv_to_normalised_data,
-)
+from mxm_refdata.models.currencies import Currency
+from mxm_refdata.models.periods import PeriodType
+from mxm_refdata.models.products.futures_product import FuturesProduct, SettlementMethod
+from mxm_refdata.models.units import ProductUnit
+from mxm_refdata.parsing.futures_products_from_csv import parse_futures_products_csv
+
+
+class FuturesProductSpec(TypedDict, total=False):
+    """
+    Typed input payload for creating FuturesProduct instances.
+
+    Intended primarily for tests/fixtures and controlled programmatic creation.
+
+    Notes:
+      - This is *not* persisted format.
+      - period_types must already be canonical: tuple[PeriodType, ...].
+    """
+
+    product_id: str
+    venue: str
+    description: str
+    currency: Currency
+    unit: ProductUnit
+    contract_size: float
+    valid_period_rule: str
+    listing_rule: str
+    period_types: tuple[PeriodType, ...]
+    settlement: SettlementMethod
+    last_trading_rule: str
+    expiry_rule: str
+    trading_calendar: str
+    trading_hours: str | None
+    tick_size: float | None
+    tick_value: float | None
+    initial_margin: float | None
+    maintenance_margin: float | None
 
 
 class FuturesProductFactory:
-    """Factory for creating and caching FuturesProduct instances."""
+    """Factory / interning cache for FuturesProduct instances."""
 
-    _instance = None  # Singleton instance
-    _lock = threading.Lock()  # Thread safety lock
-    _cache: Dict[str, FuturesProduct] = {}  # Cache for created products
+    _instance: FuturesProductFactory | None = None
+    _lock = threading.Lock()
+    _cache: dict[str, FuturesProduct]
 
-    def __new__(cls) -> "FuturesProductFactory":
-        """Ensure only one instance of FuturesProductFactory."""
+    def __new__(cls) -> FuturesProductFactory:
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
+                cls._instance._cache = {}  # instance-owned cache
         return cls._instance
 
-    def create_from_normalized_data(self, data: dict) -> FuturesProduct:
-        """Create a FuturesProduct from normalized data."""
-        product_id = data["product_id"]
-        if product_id not in self._cache:
-            product = FuturesProduct(**data)
-            self._cache[product_id] = product
-        return self._cache[product_id]
+    # -------------------------
+    # Core cache operations
+    # -------------------------
 
-    @staticmethod
-    def initialise_from_csv(csv_file_path: str) -> list[FuturesProduct]:
-        normalized_data = parse_futures_products_csv_to_normalised_data(csv_file_path)
-        factory = FuturesProductFactory()
-        return [factory.create_from_normalized_data(data) for data in normalized_data]
-
-    def get_product(self, product_id: str, **kwargs) -> FuturesProduct:
+    def intern(self, product: FuturesProduct) -> FuturesProduct:
         """
-        Retrieve a FuturesProduct from the cache, or create one if it doesn't exist.
-
-        Args:
-            product_id (str): The unique identifier of the product.
-            **kwargs: Additional arguments to create a FuturesProduct if not cached.
-
-        Returns:
-            FuturesProduct: The cached or newly created product.
+        Return the canonical FuturesProduct instance for product.product_id.
         """
-        if product_id not in self._cache:
-            self._cache[product_id] = FuturesProduct(**kwargs)
-        return self._cache[product_id]
+        cached = self._cache.get(product.product_id)
+        if cached is None:
+            self._cache[product.product_id] = product
+            return product
+        return cached
+
+    def get(self, product_id: str) -> FuturesProduct | None:
+        """Return product if present, else None."""
+        return self._cache.get(product_id)
+
+    def require(self, product_id: str) -> FuturesProduct:
+        """Return product if present, else raise."""
+        p = self._cache.get(product_id)
+        if p is None:
+            raise KeyError(f"Unknown product_id: {product_id!r}")
+        return p
+
+    def all(self) -> list[FuturesProduct]:
+        """Return all cached products (order not guaranteed)."""
+        return list(self._cache.values())
+
+    def clear(self) -> None:
+        """Clear the cache (useful in tests)."""
+        self._cache.clear()
+
+    # -------------------------
+    # Construction helpers
+    # -------------------------
+
+    def create_from_spec(self, spec: FuturesProductSpec) -> FuturesProduct:
+        """
+        Create (and intern) a FuturesProduct from a typed spec payload.
+
+        This is useful for tests, fixtures, and programmatic creation.
+
+        Requirements:
+          - spec must include product_id and all required FuturesProduct fields.
+          - period_types must be a tuple[PeriodType, ...] (canonical).
+        """
+        if "product_id" not in spec or not spec["product_id"]:
+            raise ValueError("FuturesProductSpec requires non-empty 'product_id'")
+
+        # TypedDict is total=False, so we need to trust the caller for required keys.
+        # This is intended for controlled/test usage.
+        product = FuturesProduct(**cast(dict[str, Any], spec))  # safe boundary
+        return self.intern(product)
+
+    @classmethod
+    def initialise_from_csv(cls, csv_file_path: str) -> list[FuturesProduct]:
+        """
+        Load products from CSV and intern them into the factory cache.
+        """
+        products = parse_futures_products_csv(csv_file_path)
+        factory = cls()
+        return [factory.intern(p) for p in products]

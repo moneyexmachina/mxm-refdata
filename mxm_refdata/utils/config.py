@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
-from pydantic import ConfigDict
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _default_sqlite_db_url() -> str:
@@ -23,7 +23,9 @@ class Config(BaseSettings):
     # None means "use packaged CSV resource"
     REFDATA_FUTURES_PRODUCTS_CSV_PATH: str | None = None
 
-    model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8"
+    )
 
 
 def load_config() -> Config:

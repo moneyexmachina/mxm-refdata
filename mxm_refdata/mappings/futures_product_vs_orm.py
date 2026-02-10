@@ -2,6 +2,10 @@
 
 from mxm_refdata.models.orm import FuturesProductORM
 from mxm_refdata.models.products.futures_product import FuturesProduct
+from mxm_refdata.utils.period_types_codec import (
+    decode_period_types,
+    encode_period_types,
+)
 
 
 def futures_product_to_orm(product: FuturesProduct) -> FuturesProductORM:
@@ -15,7 +19,7 @@ def futures_product_to_orm(product: FuturesProduct) -> FuturesProductORM:
         contract_size=product.contract_size,
         valid_period_rule=product.valid_period_rule,
         listing_rule=product.listing_rule,
-        period_types=product.period_types,
+        period_types=encode_period_types(product.period_types),
         settlement=product.settlement,
         last_trading_rule=product.last_trading_rule,
         expiry_rule=product.expiry_rule,
@@ -39,7 +43,7 @@ def futures_product_from_orm(orm_instance: FuturesProductORM) -> FuturesProduct:
         contract_size=orm_instance.contract_size,
         valid_period_rule=orm_instance.valid_period_rule,
         listing_rule=orm_instance.listing_rule,
-        period_types=orm_instance.period_types,
+        period_types=decode_period_types(orm_instance.period_types),
         settlement=orm_instance.settlement,
         last_trading_rule=orm_instance.last_trading_rule,
         expiry_rule=orm_instance.expiry_rule,

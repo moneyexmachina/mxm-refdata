@@ -17,6 +17,7 @@ python = ">=3.13,<4.0"
 pandas = ">=2.3.3,<3.0.0"
 sqlalchemy = ">=2.0.43,<3.0.0"
 exchange-calendars = { version = "^4.11.1", markers = "python_version >= '3.10' and python_version < '4.0'" }
+pyright = "^1.1.408"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

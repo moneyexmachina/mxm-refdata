@@ -1,15 +1,15 @@
-"""Parse csv file containing futures_product data to normalised internal data."""
+from __future__ import annotations
 
 import csv
 
 from mxm_refdata.models.currencies import Currency
-from mxm_refdata.models.periods import PeriodType
-from mxm_refdata.models.products.futures_product import SettlementMethod
+from mxm_refdata.models.products.futures_product import FuturesProduct, SettlementMethod
 from mxm_refdata.models.units import ProductUnit
+from mxm_refdata.utils.period_types_codec import decode_period_types
 
 
-def parse_futures_products_csv_to_normalised_data(csv_file_path: str) -> list[dict]:
-    """Parse CSV into a normalized format."""
+def parse_futures_products_csv(csv_file_path: str) -> list[FuturesProduct]:
+    """Parse futures_products.csv into FuturesProduct domain objects."""
     required_fields = {
         "product_id",
         "venue",
@@ -27,42 +27,50 @@ def parse_futures_products_csv_to_normalised_data(csv_file_path: str) -> list[di
         "trading_hours",
         "tick_size",
         "tick_value",
+        "initial_margin",
+        "maintenance_margin",
     }
+
+    def _fopt(x: str | None) -> float | None:
+        s = (x or "").strip()
+        return float(s) if s else None
+
+    def _freq(x: str | None, field: str) -> float:
+        s = (x or "").strip()
+        if not s:
+            raise ValueError(f"required numeric field {field!r} is empty")
+        return float(s)
 
     with open(csv_file_path, mode="r", encoding="utf-8-sig") as csvfile:
         reader = csv.DictReader(csvfile)
-        products = []
+        products: list[FuturesProduct] = []
+
         for row in reader:
-            # Validate presence of required fields
             missing_fields = required_fields - set(row.keys())
             if missing_fields:
                 raise ValueError(f"Missing required fields in CSV: {missing_fields}")
 
-            # Normalize and validate field values
-            normalized = {
-                "product_id": row["product_id"],
-                "venue": row["venue"],
-                "description": row["description"],
-                "currency": Currency[row["currency"]],
-                "unit": ProductUnit[row["unit"]],
-                "contract_size": float(row["contract_size"]),
-                "valid_period_rule": row["valid_period_rule"],
-                "listing_rule": row["listing_rule"],
-                "period_types": PeriodType[row["period_types"]],
-                "settlement": SettlementMethod[row["settlement"]],
-                "last_trading_rule": row["last_trading_rule"],
-                "expiry_rule": row["expiry_rule"],
-                "trading_calendar": row["trading_calendar"],
-                "trading_hours": row["trading_hours"],
-                "tick_size": float(row["tick_size"]),
-                "tick_value": float(row["tick_value"]),
-                "initial_margin": float(row["initial_margin"])
-                if row.get("initial_margin")
-                else None,
-                "maintenance_margin": float(row["maintenance_margin"])
-                if row.get("maintenance_margin")
-                else None,
-            }
-            products.append(normalized)
+            products.append(
+                FuturesProduct(
+                    product_id=row["product_id"],
+                    venue=row["venue"],
+                    description=row["description"],
+                    currency=Currency[row["currency"]],
+                    unit=ProductUnit[row["unit"]],
+                    contract_size=_freq(row.get("contract_size"), "contract_size"),
+                    valid_period_rule=row["valid_period_rule"],
+                    listing_rule=row["listing_rule"],
+                    period_types=decode_period_types(row["period_types"]),
+                    settlement=SettlementMethod[row["settlement"]],
+                    last_trading_rule=row["last_trading_rule"],
+                    expiry_rule=row["expiry_rule"],
+                    trading_calendar=row["trading_calendar"],
+                    trading_hours=(row.get("trading_hours") or "").strip() or None,
+                    tick_size=_fopt(row.get("tick_size")),
+                    tick_value=_fopt(row.get("tick_value")),
+                    initial_margin=_fopt(row.get("initial_margin")),
+                    maintenance_margin=_fopt(row.get("maintenance_margin")),
+                )
+            )
 
     return products

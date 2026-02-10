@@ -1,12 +1,14 @@
 """A cache manager for the reference data service."""
 
 import threading
-from typing import Any, Optional
+from typing import Any, Generic, TypeVar
 
 from cachetools import LRUCache
 
+V = TypeVar("V")
 
-class CacheManager:
+
+class CacheManager(Generic[V]):
     """Thread-safe cache manager using an LRU cache."""
 
     def __init__(self, maxsize: int = 1000):
@@ -16,10 +18,10 @@ class CacheManager:
         Args:
             maxsize (int): Maximum number of items to store in the cache.
         """
-        self._cache = LRUCache(maxsize=maxsize)
+        self._cache: LRUCache[str, V] = LRUCache(maxsize=maxsize)
         self._lock = threading.Lock()
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """Thread-safe retrieval from the cache."""
         with self._lock:
             return self._cache.get(key)

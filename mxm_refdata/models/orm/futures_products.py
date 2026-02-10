@@ -1,15 +1,23 @@
-"""ORM model for the futures_products table."""
+"""
+ORM model for the futures_products table.
+"""
 
-from sqlalchemy import Column, Enum, Float, String, Text
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Enum, Float, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mxm_refdata.models.orm.base import Base
 from mxm_refdata.models.products.futures_product import (
     Currency,
-    PeriodType,
     ProductUnit,
     SettlementMethod,
 )
+
+if TYPE_CHECKING:
+    from mxm_refdata.models.orm.futures_contracts import FuturesContractORM
 
 
 class FuturesProductORM(Base):
@@ -17,25 +25,37 @@ class FuturesProductORM(Base):
 
     __tablename__ = "futures_products"
 
-    product_id = Column(String, primary_key=True, nullable=False)
-    venue = Column(String, nullable=False)
-    description = Column(Text, nullable=False)
-    currency = Column(Enum(Currency), nullable=False)
-    unit = Column(Enum(ProductUnit), nullable=False)
-    contract_size = Column(Float, nullable=False)
-    valid_period_rule = Column(Text, nullable=False)
-    listing_rule = Column(Text, nullable=False)
-    period_types = Column(Enum(PeriodType), nullable=False)
-    settlement = Column(Enum(SettlementMethod), nullable=False)
-    last_trading_rule = Column(Text, nullable=False)
-    expiry_rule = Column(Text, nullable=False)
-    trading_calendar = Column(String, nullable=False)
-    trading_hours = Column(Text, nullable=True)
-    tick_size = Column(Float, nullable=True)
-    tick_value = Column(Float, nullable=True)
-    initial_margin = Column(Float, nullable=True)
-    maintenance_margin = Column(Float, nullable=True)
+    product_id: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
+    venue: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
 
-    contracts = relationship(
-        "FuturesContractORM", back_populates="product", cascade="all, delete-orphan"
+    currency: Mapped[Currency] = mapped_column(Enum(Currency), nullable=False)
+    unit: Mapped[ProductUnit] = mapped_column(Enum(ProductUnit), nullable=False)
+    contract_size: Mapped[float] = mapped_column(Float, nullable=False)
+
+    valid_period_rule: Mapped[str] = mapped_column(Text, nullable=False)
+    listing_rule: Mapped[str] = mapped_column(Text, nullable=False)
+
+    period_types: Mapped[str] = mapped_column(Text, nullable=False)
+
+    settlement: Mapped[SettlementMethod] = mapped_column(
+        Enum(SettlementMethod), nullable=False
+    )
+    last_trading_rule: Mapped[str] = mapped_column(Text, nullable=False)
+    expiry_rule: Mapped[str] = mapped_column(Text, nullable=False)
+
+    trading_calendar: Mapped[str] = mapped_column(String, nullable=False)
+
+    trading_hours: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    tick_size: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tick_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    initial_margin: Mapped[float | None] = mapped_column(Float, nullable=True)
+    maintenance_margin: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    contracts: Mapped[list["FuturesContractORM"]] = relationship(
+        "FuturesContractORM",
+        back_populates="product",
+        cascade="all, delete-orphan",
     )

@@ -1,13 +1,21 @@
-"""ORM model for the futures_contracts table."""
+"""
+ORM model for the futures_contracts table.
+"""
 
-from sqlalchemy import Column, Enum, Float, ForeignKey, String
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+
+from datetime import date
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Date, Enum, Float, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mxm_refdata.models.orm.base import Base
-from mxm_refdata.models.products.futures_product import (
-    Currency,
-    ProductUnit,
-)
+from mxm_refdata.models.products.futures_product import Currency, ProductUnit
+
+if TYPE_CHECKING:
+    from mxm_refdata.models.orm.futures_products import FuturesProductORM
+    from mxm_refdata.models.orm.periods import PeriodORM
 
 
 class FuturesContractORM(Base):
@@ -15,28 +23,31 @@ class FuturesContractORM(Base):
 
     __tablename__ = "futures_contracts"
 
-    contract_id = Column(
-        String, primary_key=True, nullable=False
-    )  # Unique contract identifier
-    product_id = Column(
-        String, ForeignKey("futures_products.product_id"), nullable=False
-    )  # Foreign key to FuturesProduct
-    period_id = Column(
-        String, ForeignKey("periods.period_id"), nullable=False
-    )  # Foreign key to Period
-    contract_size = Column(Float, nullable=False)  # Size of the contract
-    currency = Column(Enum(Currency), nullable=False)
-    unit = Column(Enum(ProductUnit), nullable=False)
-    trading_calendar = Column(
-        String, nullable=False
-    )  # Trading calendar of the contract
-    first_day_of_interest = Column(
-        String, nullable=False
-    )  # First day of interest for the contract
-    last_trading_day = Column(
-        String, nullable=False
-    )  # Last trading day for the contract
+    contract_id: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
+
+    product_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("futures_products.product_id"),
+        nullable=False,
+    )
+
+    period_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("periods.period_id"),
+        nullable=False,
+    )
+
+    contract_size: Mapped[float] = mapped_column(Float, nullable=False)
+    currency: Mapped[Currency] = mapped_column(Enum(Currency), nullable=False)
+    unit: Mapped[ProductUnit] = mapped_column(Enum(ProductUnit), nullable=False)
+
+    trading_calendar: Mapped[str] = mapped_column(String, nullable=False)
+
+    first_day_of_interest: Mapped[date] = mapped_column(Date, nullable=False)
+    last_trading_day: Mapped[date] = mapped_column(Date, nullable=False)
 
     # Relationships
-    product = relationship("FuturesProductORM", back_populates="contracts")
-    period = relationship("PeriodORM", back_populates="contracts")
+    product: Mapped["FuturesProductORM"] = relationship(
+        "FuturesProductORM", back_populates="contracts"
+    )
+    period: Mapped["PeriodORM"] = relationship("PeriodORM", back_populates="contracts")

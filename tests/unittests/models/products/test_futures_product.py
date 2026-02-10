@@ -17,7 +17,7 @@ def test_futures_product_initialization():
         contract_size=100.0,
         valid_period_rule="FGHJKMNQUVXZ",
         listing_rule="monthly for all months",
-        period_types=PeriodType.MONTH,
+        period_types=(PeriodType.MONTH,),
         settlement=SettlementMethod.PHYSICAL,
         last_trading_rule="3rd last business day of the delivery month",
         expiry_rule="3rd Friday of the delivery month",
@@ -31,7 +31,7 @@ def test_futures_product_initialization():
     assert product.unit == ProductUnit.TROY_OUNCE
     assert product.contract_size == 100.0
     assert product.listing_rule == "monthly for all months"
-    assert product.period_types == PeriodType.MONTH
+    assert product.period_types == (PeriodType.MONTH,)
     assert product.settlement == SettlementMethod.PHYSICAL
     assert product.expiry_rule == "3rd Friday of the delivery month"
     assert product.trading_calendar == "CME default"
@@ -48,7 +48,7 @@ def test_futures_product_optional_fields():
         contract_size=100.0,
         valid_period_rule="FGHJKMNQUVXZ",
         listing_rule="monthly for all months",
-        period_types=PeriodType.MONTH,
+        period_types=(PeriodType.MONTH,),
         settlement=SettlementMethod.PHYSICAL,
         last_trading_rule="3rd last business day of the delivery month",
         expiry_rule="3rd Friday of the delivery month",

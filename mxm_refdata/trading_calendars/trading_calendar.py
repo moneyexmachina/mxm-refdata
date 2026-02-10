@@ -12,7 +12,10 @@ class TradingCalendar:
     """
 
     def __init__(
-        self, calendar_name: str, start: datetime.date = None, end: datetime.date = None
+        self,
+        calendar_name: str,
+        start: datetime.date | None = None,
+        end: datetime.date | None = None,
     ):
         """
         Initializes a TradingCalendar based on an exchange calendar.

@@ -86,6 +86,9 @@ class RefDataService:
 
         This method is a convenience function that ensures all required data is set up correctly.
 
+        NOTE: initialisation expects boundary-aligned horizons.
+        We filter to periods fully contained in [start_date, end_date] deliberately.
+        Do not call this with arbitrary dates; use a separate overlap query for ad hoc ranges.
         Args:
             csv_file_path (Optional[str]): Path to the CSV file for futures products.
             start_date (Optional[date]): Start date for contract generation (default: today).
@@ -127,7 +130,7 @@ class RefDataService:
         if csv_file_path is None:
             cfg = load_config()
             with futures_products_csv_path(cfg) as csv_file_path:
-                products = self.product_factory.initialise_from_csv(csv_file_path)
+                products = FuturesProductFactory.initialise_from_csv(csv_file_path)
         else:
             products = self.product_factory.initialise_from_csv(csv_file_path)
 

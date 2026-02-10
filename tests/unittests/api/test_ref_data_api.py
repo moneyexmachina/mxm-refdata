@@ -3,14 +3,18 @@
 from datetime import date
 
 import pytest
+from pytest import MonkeyPatch
+from pytest_mock import MockerFixture
 from sqlalchemy import create_engine
 
 from mxm_refdata.api.ref_data_api import RefDataAPI
 from mxm_refdata.database.sql_session_manager import SQLSessionManager
 from mxm_refdata.mappings.orm_converter import obj_to_orm
 from mxm_refdata.models.contracts.futures_contract import FuturesContract
-from mxm_refdata.models.periods import Period
-from mxm_refdata.models.products.futures_product import FuturesProduct
+from mxm_refdata.models.currencies import Currency
+from mxm_refdata.models.periods import Period, PeriodType
+from mxm_refdata.models.products.futures_product import FuturesProduct, SettlementMethod
+from mxm_refdata.models.units import ProductUnit
 
 
 @pytest.fixture(scope="module")
@@ -23,14 +27,14 @@ def db_session_manager():
 
 
 @pytest.fixture(autouse=True)
-def reset_db(db_session_manager):
+def reset_db(db_session_manager: SQLSessionManager):
     """Ensure a clean database state before each test."""
     db_session_manager.drop_db()
     db_session_manager.init_db()
 
 
 @pytest.fixture
-def ref_data_api(db_session_manager, monkeypatch):
+def ref_data_api(db_session_manager: SQLSessionManager, monkeypatch: MonkeyPatch):
     """
     Fixture to create an instance of RefDataAPI for unit tests.
 
@@ -49,20 +53,20 @@ def ref_data_api(db_session_manager, monkeypatch):
 
 
 @pytest.fixture
-def mock_data(db_session_manager):
+def mock_data(db_session_manager: SQLSessionManager):
     """Pre-populates the database with business model objects, ensuring conversion is tested."""
     with db_session_manager.db_session_scope() as session:
         product = FuturesProduct(
             product_id="gold_fut",
             venue="CME",
             description="Gold Futures",
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             contract_size=100.0,
             valid_period_rule="FGHJKMNQUVXZ",
             listing_rule="Monthly",
-            period_types="MONTH",
-            settlement="PHYSICAL",
+            period_types=(PeriodType.MONTH,),
+            settlement=SettlementMethod.PHYSICAL,
             last_trading_rule="3rd last business day of the delivery month",
             expiry_rule="End of Month",
             trading_calendar="Default Calendar",
@@ -73,7 +77,7 @@ def mock_data(db_session_manager):
 
         period = Period(
             period_id="Jan-2025",
-            period_type="MONTH",
+            period_type=PeriodType.MONTH,
             first_date=date(2025, 1, 1),
             last_date=date(2025, 1, 31),
         )
@@ -93,21 +97,21 @@ def mock_data(db_session_manager):
         session.add(obj_to_orm(contract))
 
 
-def test_get_product_by_id(ref_data_api, mock_data):
+def test_get_product_by_id(ref_data_api: RefDataAPI, mock_data):
     """Test retrieving a product by ID."""
     product = ref_data_api.get_product_by_id("gold_fut")
     assert product is not None, "Expected product to be found."
     assert product.product_id == "gold_fut", "Product ID mismatch."
 
 
-def test_get_contracts_for_date(ref_data_api, mock_data):
+def test_get_contracts_for_date(ref_data_api: RefDataAPI, mock_data):
     """Test retrieving contracts active during their delivery period."""
     contracts = ref_data_api.get_contracts_for_date(date(2025, 1, 15))
     assert len(contracts) == 1, "Expected 1 active contract on this date."
     assert contracts[0].contract_id == "gold_fut.Jan-2025", "Contract ID mismatch."
 
 
-def test_caching_behavior(ref_data_api, mock_data, mocker):
+def test_caching_behavior(ref_data_api: RefDataAPI, mock_data, mocker: MockerFixture):
     """Test that caching prevents redundant DB queries."""
     spy = mocker.spy(ref_data_api.session_manager, "db_session_scope")
 
@@ -163,7 +167,7 @@ def test_auto_bootstrap_refused_managed(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def mock_data_active_contracts(db_session_manager):
+def mock_data_active_contracts(db_session_manager: SQLSessionManager):
     """
     Pre-populates the database with:
       - 2 products
@@ -177,13 +181,13 @@ def mock_data_active_contracts(db_session_manager):
             product_id="gold_fut",
             venue="CME",
             description="Gold Futures",
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             contract_size=100.0,
             valid_period_rule="FGHJKMNQUVXZ",
             listing_rule="Monthly",
-            period_types="MONTH",
-            settlement="PHYSICAL",
+            period_types=(PeriodType.MONTH,),
+            settlement=SettlementMethod.PHYSICAL,
             last_trading_rule="3rd last business day of the delivery month",
             expiry_rule="End of Month",
             trading_calendar="Default Calendar",
@@ -194,13 +198,13 @@ def mock_data_active_contracts(db_session_manager):
             product_id="corn_fut",
             venue="CBOT",
             description="Corn Futures",
-            currency="USD",
-            unit="BUSHEL",
+            currency=Currency.USD,
+            unit=ProductUnit.BUSHEL,
             contract_size=5000.0,
             valid_period_rule="HKNUZ",
             listing_rule="Monthly",
-            period_types="MONTH",
-            settlement="PHYSICAL",
+            period_types=(PeriodType.MONTH,),
+            settlement=SettlementMethod.PHYSICAL,
             last_trading_rule="Business day prior to 15th calendar day",
             expiry_rule="End of Month",
             trading_calendar="Default Calendar",
@@ -213,13 +217,13 @@ def mock_data_active_contracts(db_session_manager):
         # Periods (only required if your schema enforces FK; harmless otherwise)
         jan_2025 = Period(
             period_id="Jan-2025",
-            period_type="MONTH",
+            period_type=PeriodType.MONTH,
             first_date=date(2025, 1, 1),
             last_date=date(2025, 1, 31),
         )
         feb_2025 = Period(
             period_id="Feb-2025",
-            period_type="MONTH",
+            period_type=PeriodType.MONTH,
             first_date=date(2025, 2, 1),
             last_date=date(2025, 2, 28),
         )
@@ -285,7 +289,7 @@ def mock_data_active_contracts(db_session_manager):
 
 
 def test_get_active_contracts_semantics_and_boundaries(
-    ref_data_api, mock_data_active_contracts
+    ref_data_api: RefDataAPI, mock_data_active_contracts
 ):
     """
     Active is defined as: first_day_of_interest <= as_of_date <= last_trading_day.
@@ -310,7 +314,7 @@ def test_get_active_contracts_semantics_and_boundaries(
 
 
 def test_get_active_contracts_product_id_filter(
-    ref_data_api, mock_data_active_contracts
+    ref_data_api: RefDataAPI, mock_data_active_contracts
 ):
     """Restricting by product_id should only return contracts from that product."""
     contracts = ref_data_api.get_active_contracts(
@@ -321,7 +325,7 @@ def test_get_active_contracts_product_id_filter(
 
 
 def test_get_active_contracts_product_ids_filter(
-    ref_data_api, mock_data_active_contracts
+    ref_data_api: RefDataAPI, mock_data_active_contracts
 ):
     """Restricting by product_ids should return active contracts across those products."""
     contracts = ref_data_api.get_active_contracts(
@@ -336,7 +340,7 @@ def test_get_active_contracts_product_ids_filter(
 
 
 def test_get_active_contracts_empty_product_ids_returns_empty(
-    ref_data_api, mock_data_active_contracts
+    ref_data_api: RefDataAPI, mock_data_active_contracts
 ):
     """An explicitly empty product_ids list should return an empty list."""
     contracts = ref_data_api.get_active_contracts(date(2025, 1, 15), product_ids=[])
@@ -344,7 +348,7 @@ def test_get_active_contracts_empty_product_ids_returns_empty(
 
 
 def test_get_active_contracts_rejects_both_product_id_and_product_ids(
-    ref_data_api, mock_data_active_contracts
+    ref_data_api: RefDataAPI, mock_data_active_contracts
 ):
     """Providing both product_id and product_ids must raise ValueError."""
     with pytest.raises(ValueError):
@@ -356,7 +360,7 @@ def test_get_active_contracts_rejects_both_product_id_and_product_ids(
 
 
 def test_get_active_contracts_caching_behavior(
-    ref_data_api, mock_data_active_contracts, mocker
+    ref_data_api: RefDataAPI, mock_data_active_contracts, mocker: MockerFixture
 ):
     """Caching should prevent redundant DB queries for identical get_active_contracts calls."""
     spy = mocker.spy(ref_data_api.session_manager, "db_session_scope")
@@ -368,7 +372,10 @@ def test_get_active_contracts_caching_behavior(
     assert spy.call_count == 1, "Expected cached data, no additional DB calls."
 
 
-def test_get_contracts_for_product_orders_by_period(ref_data_api, db_session_manager):
+def test_get_contracts_for_product_orders_by_period(
+    ref_data_api: RefDataAPI,
+    db_session_manager: SQLSessionManager,
+):
     """
     get_contracts_for_product should return contracts ordered by Period, using the
     Period.__lt__ semantics (PERIOD_PRIORITY then first_date), with contract_id as
@@ -383,13 +390,13 @@ def test_get_contracts_for_product_orders_by_period(ref_data_api, db_session_man
             product_id="mix_tenor_fut",
             venue="CME",
             description="Mixed Tenor Futures",
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             contract_size=1.0,
             valid_period_rule="",
             listing_rule="Mixed",
-            period_types="YEAR,MONTH",
-            settlement="CASH",
+            period_types=(PeriodType.MONTH,),
+            settlement=SettlementMethod.CASH,
             last_trading_rule="",
             expiry_rule="",
             trading_calendar="Default Calendar",
@@ -401,13 +408,13 @@ def test_get_contracts_for_product_orders_by_period(ref_data_api, db_session_man
         # Periods: YEAR should sort before MONTH per PERIOD_PRIORITY
         p_year_2025 = Period(
             period_id="2025",
-            period_type="YEAR",
+            period_type=PeriodType.YEAR,
             first_date=date(2025, 1, 1),
             last_date=date(2025, 12, 31),
         )
         p_month_jan_2025 = Period(
             period_id="Jan-2025",
-            period_type="MONTH",
+            period_type=PeriodType.MONTH,
             first_date=date(2025, 1, 1),
             last_date=date(2025, 1, 31),
         )
@@ -447,21 +454,22 @@ def test_get_contracts_for_product_orders_by_period(ref_data_api, db_session_man
     ]
 
 
-def test_get_contract_by_id_found(ref_data_api, mock_data):
+def test_get_contract_by_id_found(ref_data_api: RefDataAPI, mock_data):
     """get_contract_by_id should return the contract when it exists."""
     contract = ref_data_api.get_contract_by_id("gold_fut.Jan-2025")
     assert contract is not None, "Expected contract to be found."
     assert contract.contract_id == "gold_fut.Jan-2025", "Contract ID mismatch."
 
 
-def test_get_contract_by_id_missing(ref_data_api, mock_data):
+def test_get_contract_by_id_missing(ref_data_api: RefDataAPI, mock_data):
     """get_contract_by_id should return None when the contract does not exist."""
     contract = ref_data_api.get_contract_by_id("does_not_exist")
     assert contract is None, "Expected None for missing contract."
 
 
 def test_get_contracts_by_id_preserves_order_and_ignores_missing(
-    ref_data_api, db_session_manager
+    ref_data_api: RefDataAPI,
+    db_session_manager: SQLSessionManager,
 ):
     """
     get_contracts_by_id should:
@@ -474,13 +482,13 @@ def test_get_contracts_by_id_preserves_order_and_ignores_missing(
             product_id="lookup_fut",
             venue="CME",
             description="Lookup Futures",
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             contract_size=1.0,
             valid_period_rule="",
             listing_rule="Monthly",
-            period_types="MONTH",
-            settlement="CASH",
+            period_types=(PeriodType.MONTH,),
+            settlement=SettlementMethod.CASH,
             last_trading_rule="",
             expiry_rule="",
             trading_calendar="Default Calendar",
@@ -491,7 +499,7 @@ def test_get_contracts_by_id_preserves_order_and_ignores_missing(
 
         period = Period(
             period_id="Jan-2025",
-            period_type="MONTH",
+            period_type=PeriodType.MONTH,
             first_date=date(2025, 1, 1),
             last_date=date(2025, 1, 31),
         )
@@ -532,12 +540,18 @@ def test_get_contracts_by_id_preserves_order_and_ignores_missing(
     ]
 
 
-def test_get_contracts_by_id_empty_list_returns_empty(ref_data_api, mock_data):
+def test_get_contracts_by_id_empty_list_returns_empty(
+    ref_data_api: RefDataAPI, mock_data
+):
     """get_contracts_by_id should return [] when given an empty input list."""
     assert ref_data_api.get_contracts_by_id([]) == []
 
 
-def test_get_contract_by_id_caching_behavior(ref_data_api, mock_data, mocker):
+def test_get_contract_by_id_caching_behavior(
+    ref_data_api: RefDataAPI,
+    mock_data,
+    mocker: MockerFixture,
+):
     """Caching should prevent redundant DB queries for identical get_contract_by_id calls."""
     spy = mocker.spy(ref_data_api.session_manager, "db_session_scope")
 
@@ -548,20 +562,24 @@ def test_get_contract_by_id_caching_behavior(ref_data_api, mock_data, mocker):
     assert spy.call_count == 1, "Expected cached data, no additional DB calls."
 
 
-def test_get_contracts_by_id_caching_behavior(ref_data_api, db_session_manager, mocker):
+def test_get_contracts_by_id_caching_behavior(
+    ref_data_api: RefDataAPI,
+    db_session_manager: SQLSessionManager,
+    mocker: MockerFixture,
+):
     """Caching should prevent redundant DB queries for identical get_contracts_by_id calls."""
     with db_session_manager.db_session_scope() as session:
         product = FuturesProduct(
             product_id="lookup_cache_fut",
             venue="CME",
             description="Lookup Cache Futures",
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             contract_size=1.0,
             valid_period_rule="",
             listing_rule="Monthly",
-            period_types="MONTH",
-            settlement="CASH",
+            period_types=(PeriodType.MONTH,),
+            settlement=SettlementMethod.CASH,
             last_trading_rule="",
             expiry_rule="",
             trading_calendar="Default Calendar",
@@ -572,7 +590,7 @@ def test_get_contracts_by_id_caching_behavior(ref_data_api, db_session_manager, 
 
         period = Period(
             period_id="Jan-2025",
-            period_type="MONTH",
+            period_type=PeriodType.MONTH,
             first_date=date(2025, 1, 1),
             last_date=date(2025, 1, 31),
         )

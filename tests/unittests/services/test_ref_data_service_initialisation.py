@@ -7,11 +7,13 @@ from sqlalchemy import create_engine
 
 from mxm_refdata.database.sql_session_manager import SQLSessionManager
 from mxm_refdata.models.contracts.futures_contract import FuturesContract
+from mxm_refdata.models.currencies import Currency
 from mxm_refdata.models.orm.futures_contracts import FuturesContractORM
 from mxm_refdata.models.orm.futures_products import FuturesProductORM
 from mxm_refdata.models.orm.periods import PeriodORM
 from mxm_refdata.models.periods import PeriodType
-from mxm_refdata.models.products.futures_product import FuturesProduct
+from mxm_refdata.models.products.futures_product import FuturesProduct, SettlementMethod
+from mxm_refdata.models.units import ProductUnit
 from mxm_refdata.services.ref_data_service import RefDataService
 
 
@@ -22,12 +24,12 @@ def futures_products():
             product_id="TEST",
             venue="CME",
             description="Test Product",
-            unit="TROY_OUNCE",
-            currency="USD",
+            unit=ProductUnit.TROY_OUNCE,
+            currency=Currency.USD,
             contract_size=100.0,
             listing_rule="Monthly",
-            period_types=PeriodType.MONTH,
-            settlement="PHYSICAL",
+            period_types=(PeriodType.MONTH,),
+            settlement=SettlementMethod.PHYSICAL,
             last_trading_rule="3rd last business day of the delivery month",
             expiry_rule="End of Month",
             trading_calendar="Default Calendar",
@@ -49,8 +51,8 @@ def futures_contracts():
             currency="USD",
             unit="TROY_OUNCE",
             trading_calendar="Default Calendar",
-            first_day_of_interest="2024-01-01",
-            last_trading_day="2024-01-31",
+            first_day_of_interest=date(2024, 1, 1),
+            last_trading_day=date(2024, 1, 31),
         )
     ]
 
