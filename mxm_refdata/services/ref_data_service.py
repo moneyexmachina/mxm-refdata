@@ -2,12 +2,27 @@
 
 import logging
 from datetime import date
+from typing import List
+
+from sqlalchemy.orm import DeclarativeBase
 
 from mxm_refdata.database.sql_session_manager import SQLSessionManager
-from mxm_refdata.mappings.orm_converter import obj_to_orm, orm_to_obj
+from mxm_refdata.mappings import (
+    futures_contract_to_orm,
+    futures_product_from_orm,
+    futures_product_to_orm,
+    period_from_orm,
+    period_to_orm,
+)
+from mxm_refdata.models import FuturesContract, Period
 from mxm_refdata.models.orm.futures_contracts import FuturesContractORM
 from mxm_refdata.models.orm.futures_products import FuturesProductORM
+from mxm_refdata.models.orm.period_cycles import (
+    PeriodCycleMembershipORM,
+    PeriodCycleORM,
+)
 from mxm_refdata.models.orm.periods import PeriodORM
+from mxm_refdata.models.period_cycles import CycleInstanceKind
 from mxm_refdata.models.periods import PeriodType
 from mxm_refdata.services.futures_contract_factory import FuturesContractFactory
 from mxm_refdata.services.futures_product_factory import FuturesProductFactory
@@ -17,6 +32,9 @@ from mxm_refdata.utils.resources import futures_products_csv_path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+CYCLE_ID_CALENDAR_MONTHS = "CALENDAR_MONTHS"
+CYCLE_ID_CALENDAR_QUARTERS = "CALENDAR_QUARTERS"
 
 
 class RefDataService:
@@ -62,7 +80,7 @@ class RefDataService:
 
         return True  # All tables are empty
 
-    def is_table_empty(self, orm_model) -> bool:
+    def is_table_empty(self, orm_model: type[DeclarativeBase]) -> bool:
         """
         Check if a given ORM table is empty.
 
@@ -102,7 +120,7 @@ class RefDataService:
 
         # Step 1: Initialise periods (YEAR, QUARTER, MONTH)
         self.initialise_periods(start_date=start_date, end_date=end_date)
-
+        self.initialise_period_cycles()
         # Step 2: Initialise futures products from CSV
         self.initialise_futures_products(csv_file_path=csv_file_path)
 
@@ -129,14 +147,15 @@ class RefDataService:
 
         if csv_file_path is None:
             cfg = load_config()
-            with futures_products_csv_path(cfg) as csv_file_path:
-                products = FuturesProductFactory.initialise_from_csv(csv_file_path)
+            with futures_products_csv_path(cfg) as p:
+                products = FuturesProductFactory.initialise_from_csv(str(p))
         else:
+            assert csv_file_path is not None
             products = self.product_factory.initialise_from_csv(csv_file_path)
 
         with self.session_manager.db_session_scope() as session:
             for product in products:
-                product_orm = obj_to_orm(product)
+                product_orm = futures_product_to_orm(product)
                 session.add(product_orm)
 
     def initialise_periods(
@@ -167,7 +186,7 @@ class RefDataService:
         with self.session_manager.db_session_scope() as session:
             existing_period_ids = {p.period_id for p in session.query(PeriodORM).all()}
 
-        new_periods = []
+        new_periods: List[Period] = []
         for period_type in period_types:
             generated_periods = self.period_factory.get_periods_in_range(
                 start_date, end_date, period_type
@@ -180,7 +199,9 @@ class RefDataService:
         if new_periods:
             with self.session_manager.db_session_scope() as session:
                 for period in new_periods:
-                    session.add(obj_to_orm(period))  # Convert & store only new periods
+                    session.add(
+                        period_to_orm(period)
+                    )  # Convert & store only new periods
 
     def initialise_futures_contracts(self, start_date: date, end_date: date) -> None:
         """
@@ -193,8 +214,8 @@ class RefDataService:
         with self.session_manager.db_session_scope() as session:
             # Retrieve all existing products and convert them before session closes
             products = [
-                orm_to_obj(product)
-                for product in session.query(FuturesProductORM).all()
+                futures_product_from_orm(productORM)
+                for productORM in session.query(FuturesProductORM).all()
             ]
             if not products:
                 raise ValueError(
@@ -203,7 +224,7 @@ class RefDataService:
 
             # Retrieve all periods within the date range
             periods = {
-                p.period_id: orm_to_obj(p)
+                p.period_id: period_from_orm(p)
                 for p in session.query(PeriodORM)
                 .filter(
                     PeriodORM.first_date >= start_date, PeriodORM.last_date <= end_date
@@ -216,7 +237,7 @@ class RefDataService:
                 )
 
         # Generate contracts outside of session
-        contracts = []
+        contracts: List[FuturesContract] = []
         for product in products:
             product_contracts = self.contract_factory.create_contracts_for_product(
                 product, periods
@@ -226,4 +247,77 @@ class RefDataService:
         # Store contracts in the database
         with self.session_manager.db_session_scope() as session:
             for contract in contracts:
-                session.add(obj_to_orm(contract))
+                session.add(futures_contract_to_orm(contract=contract))
+
+    def initialise_period_cycles(self) -> None:
+        """
+        Initialise canonical PeriodCycles and PeriodCycleMemberships.
+
+        Requires PeriodORM to already exist.
+        """
+        if not self.is_table_empty(PeriodCycleORM) or not self.is_table_empty(
+            PeriodCycleMembershipORM
+        ):
+            raise ValueError(
+                "Database already contains period cycles. Run `reset_database()` first."
+            )
+
+        with self.session_manager.db_session_scope() as session:
+            # --- cycle definitions ---
+            session.add_all(
+                [
+                    PeriodCycleORM(
+                        cycle_id=CYCLE_ID_CALENDAR_MONTHS,
+                        name="Calendar Months",
+                        period_type=PeriodType.MONTH.name,
+                        instance_kind=CycleInstanceKind.YEAR.value,
+                        cycle_size=12,
+                    ),
+                    PeriodCycleORM(
+                        cycle_id=CYCLE_ID_CALENDAR_QUARTERS,
+                        name="Calendar Quarters",
+                        period_type=PeriodType.QUARTER.name,
+                        instance_kind=CycleInstanceKind.YEAR.value,
+                        cycle_size=4,
+                    ),
+                ]
+            )
+
+            # --- memberships derived from PeriodORM ---
+            periods = (
+                session.query(PeriodORM)
+                .filter(
+                    PeriodORM.period_type.in_(
+                        [PeriodType.MONTH.name, PeriodType.QUARTER.name]
+                    )
+                )
+                .all()
+            )
+
+            memberships: list[PeriodCycleMembershipORM] = []
+
+            for p in periods:
+                year = p.first_date.year
+                month = p.first_date.month
+
+                if p.period_type == PeriodType.MONTH:
+                    memberships.append(
+                        PeriodCycleMembershipORM(
+                            cycle_id=CYCLE_ID_CALENDAR_MONTHS,
+                            period_id=p.period_id,
+                            cycle_instance=year,
+                            cycle_element=month,  # 1..12
+                        )
+                    )
+                elif p.period_type == PeriodType.QUARTER:
+                    q = ((month - 1) // 3) + 1  # 1..4
+                    memberships.append(
+                        PeriodCycleMembershipORM(
+                            cycle_id=CYCLE_ID_CALENDAR_QUARTERS,
+                            period_id=p.period_id,
+                            cycle_instance=year,
+                            cycle_element=q,
+                        )
+                    )
+
+            session.add_all(memberships)

@@ -9,7 +9,11 @@ from sqlalchemy import create_engine
 
 from mxm_refdata.api.ref_data_api import RefDataAPI
 from mxm_refdata.database.sql_session_manager import SQLSessionManager
-from mxm_refdata.mappings.orm_converter import obj_to_orm
+from mxm_refdata.mappings import (
+    futures_contract_to_orm,
+    futures_product_to_orm,
+    period_to_orm,
+)
 from mxm_refdata.models.contracts.futures_contract import FuturesContract
 from mxm_refdata.models.currencies import Currency
 from mxm_refdata.models.periods import Period, PeriodType
@@ -73,7 +77,7 @@ def mock_data(db_session_manager: SQLSessionManager):
             tick_size=0.1,
             tick_value=10.0,
         )
-        session.add(obj_to_orm(product))
+        session.add(futures_product_to_orm(product))
 
         period = Period(
             period_id="Jan-2025",
@@ -81,7 +85,7 @@ def mock_data(db_session_manager: SQLSessionManager):
             first_date=date(2025, 1, 1),
             last_date=date(2025, 1, 31),
         )
-        session.add(obj_to_orm(period))
+        session.add(period_to_orm(period))
 
         contract = FuturesContract(
             product_id="gold_fut",
@@ -94,7 +98,7 @@ def mock_data(db_session_manager: SQLSessionManager):
             first_day_of_interest=date(2025, 1, 1),
             last_trading_day=date(2025, 1, 29),
         )
-        session.add(obj_to_orm(contract))
+        session.add(futures_contract_to_orm(contract))
 
 
 def test_get_product_by_id(ref_data_api: RefDataAPI, mock_data):
@@ -211,8 +215,8 @@ def mock_data_active_contracts(db_session_manager: SQLSessionManager):
             tick_size=0.25,
             tick_value=12.5,
         )
-        session.add(obj_to_orm(gold))
-        session.add(obj_to_orm(corn))
+        session.add(futures_product_to_orm(gold))
+        session.add(futures_product_to_orm(corn))
 
         # Periods (only required if your schema enforces FK; harmless otherwise)
         jan_2025 = Period(
@@ -227,8 +231,8 @@ def mock_data_active_contracts(db_session_manager: SQLSessionManager):
             first_date=date(2025, 2, 1),
             last_date=date(2025, 2, 28),
         )
-        session.add(obj_to_orm(jan_2025))
-        session.add(obj_to_orm(feb_2025))
+        session.add(period_to_orm(jan_2025))
+        session.add(period_to_orm(feb_2025))
 
         # Contracts (Gold)
         # Active window: [2025-01-01, 2025-01-29]
@@ -282,10 +286,10 @@ def mock_data_active_contracts(db_session_manager: SQLSessionManager):
             last_trading_day=date(2025, 2, 10),
         )
 
-        session.add(obj_to_orm(gold_jan))
-        session.add(obj_to_orm(gold_feb))
-        session.add(obj_to_orm(corn_jan))
-        session.add(obj_to_orm(corn_feb))
+        session.add(futures_contract_to_orm(gold_jan))
+        session.add(futures_contract_to_orm(gold_feb))
+        session.add(futures_contract_to_orm(corn_jan))
+        session.add(futures_contract_to_orm(corn_feb))
 
 
 def test_get_active_contracts_semantics_and_boundaries(
@@ -403,7 +407,7 @@ def test_get_contracts_for_product_orders_by_period(
             tick_size=0.01,
             tick_value=1.0,
         )
-        session.add(obj_to_orm(product))
+        session.add(futures_product_to_orm(product))
 
         # Periods: YEAR should sort before MONTH per PERIOD_PRIORITY
         p_year_2025 = Period(
@@ -418,8 +422,8 @@ def test_get_contracts_for_product_orders_by_period(
             first_date=date(2025, 1, 1),
             last_date=date(2025, 1, 31),
         )
-        session.add(obj_to_orm(p_year_2025))
-        session.add(obj_to_orm(p_month_jan_2025))
+        session.add(period_to_orm(p_year_2025))
+        session.add(period_to_orm(p_month_jan_2025))
 
         # Contracts referencing those periods (inserted in reverse order intentionally)
         c_month = FuturesContract(
@@ -444,8 +448,8 @@ def test_get_contracts_for_product_orders_by_period(
             first_day_of_interest=date(2024, 1, 1),
             last_trading_day=date(2025, 12, 15),
         )
-        session.add(obj_to_orm(c_month))
-        session.add(obj_to_orm(c_year))
+        session.add(futures_contract_to_orm(c_month))
+        session.add(futures_contract_to_orm(c_year))
 
     contracts = ref_data_api.get_contracts_for_product("mix_tenor_fut")
     assert [c.contract_id for c in contracts] == [
@@ -495,7 +499,7 @@ def test_get_contracts_by_id_preserves_order_and_ignores_missing(
             tick_size=0.01,
             tick_value=1.0,
         )
-        session.add(obj_to_orm(product))
+        session.add(futures_product_to_orm(product))
 
         period = Period(
             period_id="Jan-2025",
@@ -503,7 +507,7 @@ def test_get_contracts_by_id_preserves_order_and_ignores_missing(
             first_date=date(2025, 1, 1),
             last_date=date(2025, 1, 31),
         )
-        session.add(obj_to_orm(period))
+        session.add(period_to_orm(period))
 
         c1 = FuturesContract(
             product_id="lookup_fut",
@@ -527,8 +531,8 @@ def test_get_contracts_by_id_preserves_order_and_ignores_missing(
             first_day_of_interest=date(2025, 1, 2),
             last_trading_day=date(2025, 1, 30),
         )
-        session.add(obj_to_orm(c1))
-        session.add(obj_to_orm(c2))
+        session.add(futures_contract_to_orm(c1))
+        session.add(futures_contract_to_orm(c2))
 
     contracts = ref_data_api.get_contracts_by_id(
         ["lookup_fut.B", "missing", "lookup_fut.A", "lookup_fut.B"]
@@ -586,7 +590,7 @@ def test_get_contracts_by_id_caching_behavior(
             tick_size=0.01,
             tick_value=1.0,
         )
-        session.add(obj_to_orm(product))
+        session.add(futures_product_to_orm(product))
 
         period = Period(
             period_id="Jan-2025",
@@ -594,7 +598,7 @@ def test_get_contracts_by_id_caching_behavior(
             first_date=date(2025, 1, 1),
             last_date=date(2025, 1, 31),
         )
-        session.add(obj_to_orm(period))
+        session.add(period_to_orm(period))
 
         c1 = FuturesContract(
             product_id="lookup_cache_fut",
@@ -607,7 +611,7 @@ def test_get_contracts_by_id_caching_behavior(
             first_day_of_interest=date(2025, 1, 1),
             last_trading_day=date(2025, 1, 29),
         )
-        session.add(obj_to_orm(c1))
+        session.add(futures_contract_to_orm(c1))
 
     spy = mocker.spy(ref_data_api.session_manager, "db_session_scope")
 

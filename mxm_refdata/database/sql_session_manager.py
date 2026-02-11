@@ -3,7 +3,7 @@
 import logging
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -60,7 +60,7 @@ class SQLSessionManager:
         return self.session_factory()
 
     @contextmanager
-    def db_session_scope(self):
+    def db_session_scope(self) -> Iterator[Session]:
         """
         Provide a transactional scope for database operations.
 

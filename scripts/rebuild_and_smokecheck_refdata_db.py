@@ -5,6 +5,14 @@ mxm-refdata/scripts/rebuild_and_smokecheck_refdata_db.py
 Reset the refdata SQLite DB, rebuild it from CSV + generators, then run a small
 set of high-signal “smell checks” to confirm the schema + domain/ORM semantics.
 
+This script is intentionally NOT a full test suite. It is a fast operational
+sanity check for:
+- schema creation
+- deterministic rebuild
+- type-sound ORM ↔ domain mapping surfaces
+- basic coherence of core artifacts (periods/products/contracts)
+- basic coherence of new PeriodCycle artifacts (cycles + memberships)
+
 Usage examples:
 
   poetry run python mxm-refdata/scripts/rebuild_and_smokecheck_refdata_db.py
@@ -23,19 +31,32 @@ Exit code:
 from __future__ import annotations
 
 import argparse
-import sys
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Iterable
 
+from sqlalchemy import func
+
 from mxm_refdata.database.sql_session_manager import SQLSessionManager
-from mxm_refdata.mappings.orm_converter import orm_to_obj
+from mxm_refdata.mappings import (
+    futures_contract_from_orm,
+    futures_product_from_orm,
+    period_from_orm,
+)
 from mxm_refdata.models.orm.futures_contracts import FuturesContractORM
 from mxm_refdata.models.orm.futures_products import FuturesProductORM
+from mxm_refdata.models.orm.period_cycles import (
+    PeriodCycleMembershipORM,
+    PeriodCycleORM,
+)
 from mxm_refdata.models.orm.periods import PeriodORM
 from mxm_refdata.models.periods import PeriodType
 from mxm_refdata.services.ref_data_service import RefDataService
 from mxm_refdata.utils.period_types_codec import decode_period_types
+
+# Canonical cycle IDs (keep aligned with RefDataService initialisation)
+CYCLE_ID_CALENDAR_MONTHS = "CALENDAR_MONTHS"
+CYCLE_ID_CALENDAR_QUARTERS = "CALENDAR_QUARTERS"
 
 # -----------------------------
 # Small assertion helpers
@@ -64,6 +85,8 @@ class Counts:
     products: int
     periods: int
     contracts: int
+    cycles: int
+    memberships: int
 
 
 def _count_rows(session) -> Counts:
@@ -71,6 +94,8 @@ def _count_rows(session) -> Counts:
         products=session.query(FuturesProductORM).count(),
         periods=session.query(PeriodORM).count(),
         contracts=session.query(FuturesContractORM).count(),
+        cycles=session.query(PeriodCycleORM).count(),
+        memberships=session.query(PeriodCycleMembershipORM).count(),
     )
 
 
@@ -104,7 +129,7 @@ def smell_check_roundtrip_period_types(session) -> None:
         "Decoded tuple must contain PeriodType members.",
     )
 
-    product = orm_to_obj(product_orm)
+    product = futures_product_from_orm(product_orm)
     _assert(
         isinstance(product.period_types, tuple),
         "Domain FuturesProduct.period_types must be tuple.",
@@ -114,7 +139,6 @@ def smell_check_roundtrip_period_types(session) -> None:
         "Domain period_types tuple must contain PeriodType members.",
     )
 
-    # Exact equality between domain and decoded string
     _assert(
         product.period_types == decoded,
         "Domain period_types does not match decoded ORM value.",
@@ -128,7 +152,6 @@ def smell_check_contract_date_types(session) -> None:
     contract_orm = _pick_first(session.query(FuturesContractORM).limit(1).all())
     _assert(contract_orm is not None, "No contracts found after rebuild.")
 
-    # ORM field types
     fdoi = contract_orm.first_day_of_interest
     ltd = contract_orm.last_trading_day
     _assert(
@@ -139,8 +162,7 @@ def smell_check_contract_date_types(session) -> None:
         isinstance(ltd, date), f"ORM last_trading_day must be date, got {type(ltd)}."
     )
 
-    # Domain field types
-    contract = orm_to_obj(contract_orm)
+    contract = futures_contract_from_orm(contract_orm)
     _assert(
         isinstance(contract.first_day_of_interest, date),
         "Domain first_day_of_interest must be date.",
@@ -151,17 +173,12 @@ def smell_check_contract_date_types(session) -> None:
     )
 
 
-def smell_check_get_contracts_for_product_like_semantics(session) -> None:
+def smell_check_contracts_periods_coherence(session) -> None:
     """
-    Lightweight proxy check for RefDataAPI contract retrieval semantics without assuming the API class.
-    We verify:
-      - We can group contracts by product_id
-      - Filtering by period_type is feasible and returns a subset
-      - Deterministic ordering can be enforced downstream (selector will own selection logic)
-
-    This does NOT test RefDataAPI directly; it checks the stored artifacts are coherent.
+    Coherence check:
+      - contracts reference existing periods via period_id
+      - period_type filtering is feasible
     """
-    # Pick a product with contracts
     product_id = _pick_first(
         [
             pid
@@ -173,7 +190,6 @@ def smell_check_get_contracts_for_product_like_semantics(session) -> None:
     )
     _assert(product_id is not None, "No product_id found in contracts table.")
 
-    # Pull contracts for that product
     contracts_orm = (
         session.query(FuturesContractORM)
         .filter(FuturesContractORM.product_id == product_id)
@@ -184,11 +200,7 @@ def smell_check_get_contracts_for_product_like_semantics(session) -> None:
         len(contracts_orm) > 0, f"No contracts found for product_id={product_id!r}."
     )
 
-    # Convert
-    contracts = [orm_to_obj(c) for c in contracts_orm]
-
-    # If periods are attached by period_id, ensure we can load them and filter by period_type.
-    # This assumes FuturesContract has period_id or period reference via contract.period_id.
+    contracts = [futures_contract_from_orm(c) for c in contracts_orm]
     sample = contracts[0]
     period_id = getattr(sample, "period_id", None)
     _assert(
@@ -196,11 +208,8 @@ def smell_check_get_contracts_for_product_like_semantics(session) -> None:
         "Domain FuturesContract is expected to expose period_id for period typing/filtering.",
     )
 
-    # Load periods into dict
-    periods_orm = session.query(PeriodORM).all()
-    periods = {p.period_id: orm_to_obj(p) for p in periods_orm}
+    periods = {p.period_id: period_from_orm(p) for p in session.query(PeriodORM).all()}
 
-    # Choose a period type that exists for this product (if any)
     ptypes = []
     for c in contracts:
         p = periods.get(c.period_id)
@@ -211,13 +220,95 @@ def smell_check_get_contracts_for_product_like_semantics(session) -> None:
         len(ptypes) > 0,
         "Could not resolve period types for contracts via periods table.",
     )
-    chosen = _pick_first(sorted(set(ptypes), key=lambda x: x.value))  # type: ignore[attr-defined]
+    chosen = _pick_first(sorted(set(ptypes), key=lambda x: x.value))
     _assert(chosen is not None, "No period types found for product contracts.")
 
     subset = [c for c in contracts if periods[c.period_id].period_type == chosen]
     _assert(
         0 < len(subset) <= len(contracts),
         "Filtering by period_type should yield a non-empty subset.",
+    )
+
+
+def smell_check_period_cycles_present(session) -> None:
+    """
+    Verify that the canonical calendar cycles exist and have memberships.
+    """
+    cycle_ids = {cid for (cid,) in session.query(PeriodCycleORM.cycle_id).all()}
+    _assert(CYCLE_ID_CALENDAR_MONTHS in cycle_ids, "Missing cycle CALENDAR_MONTHS.")
+    _assert(CYCLE_ID_CALENDAR_QUARTERS in cycle_ids, "Missing cycle CALENDAR_QUARTERS.")
+
+    m_months = (
+        session.query(PeriodCycleMembershipORM)
+        .filter(PeriodCycleMembershipORM.cycle_id == CYCLE_ID_CALENDAR_MONTHS)
+        .count()
+    )
+    m_quarters = (
+        session.query(PeriodCycleMembershipORM)
+        .filter(PeriodCycleMembershipORM.cycle_id == CYCLE_ID_CALENDAR_QUARTERS)
+        .count()
+    )
+    _assert(m_months > 0, "No memberships for CALENDAR_MONTHS.")
+    _assert(m_quarters > 0, "No memberships for CALENDAR_QUARTERS.")
+
+
+def smell_check_period_cycle_membership_uniqueness(session) -> None:
+    """
+    Verify uniqueness constraints are not violated (high-signal for bad seeding).
+
+    We check (cycle_id, cycle_instance, cycle_element) is unique.
+    The DB schema also enforces this, but this check gives a clear message.
+    """
+    dup = (
+        session.query(
+            PeriodCycleMembershipORM.cycle_id,
+            PeriodCycleMembershipORM.cycle_instance,
+            PeriodCycleMembershipORM.cycle_element,
+            func.count().label("n"),
+        )
+        .group_by(
+            PeriodCycleMembershipORM.cycle_id,
+            PeriodCycleMembershipORM.cycle_instance,
+            PeriodCycleMembershipORM.cycle_element,
+        )
+        .having(func.count() > 1)
+        .limit(1)
+        .all()
+    )
+    _assert(not dup, f"Duplicate cycle membership keys found: {dup!r}")
+
+
+def smell_check_calendar_month_mapping(session, *, expect_month: int = 12) -> None:
+    """
+    Spot-check: for some YEAR, there exists a MONTH period mapped to cycle_element=expect_month.
+
+    This does not assume period_id parsing. We verify via Period.first_date.month.
+    """
+    # pick any membership with cycle_element==expect_month
+    mem = (
+        session.query(PeriodCycleMembershipORM)
+        .filter(
+            PeriodCycleMembershipORM.cycle_id == CYCLE_ID_CALENDAR_MONTHS,
+            PeriodCycleMembershipORM.cycle_element == expect_month,
+        )
+        .limit(1)
+        .one_or_none()
+    )
+    _assert(mem is not None, f"No month membership found for element={expect_month}.")
+
+    p = (
+        session.query(PeriodORM)
+        .filter(PeriodORM.period_id == mem.period_id)
+        .one_or_none()
+    )
+    _assert(p is not None, f"Membership references missing Period: {mem.period_id!r}")
+    _assert(
+        p.period_type == PeriodType.MONTH,
+        f"Expected mapped period_type MONTH, got {p.period_type!r}",
+    )
+    _assert(
+        p.first_date.month == expect_month,
+        f"Expected Period.first_date.month={expect_month}, got {p.first_date.month}",
     )
 
 
@@ -248,19 +339,12 @@ def main() -> int:
         default="2045-12-31",
         help="End date for period/contract generation (YYYY-MM-DD).",
     )
-    parser.add_argument(
-        "--max-products",
-        type=int,
-        default=None,
-        help="Optional: cap products inserted (debug only).",
-    )
     args = parser.parse_args()
 
     start = _parse_date(args.start)
     end = _parse_date(args.end)
     _assert(start <= end, f"Invalid date range: start={start} > end={end}")
 
-    # Create service
     sm = SQLSessionManager()
     svc = RefDataService(session_manager=sm)
 
@@ -268,17 +352,20 @@ def main() -> int:
     print(f"Range: {start} .. {end}")
     print(f"CSV:   {args.csv or '(packaged resource)'}")
 
-    # Rebuild
     svc.reset_database()
     svc.setup_instruments(csv_file_path=args.csv, start_date=start, end_date=end)
 
-    # Smell checks
     print("== smoke checks ==")
     failures: list[str] = []
     with sm.db_session_scope() as session:
         counts = _count_rows(session)
         print(
-            f"Counts: products={counts.products}, periods={counts.periods}, contracts={counts.contracts}"
+            "Counts: "
+            f"products={counts.products}, "
+            f"periods={counts.periods}, "
+            f"contracts={counts.contracts}, "
+            f"cycles={counts.cycles}, "
+            f"memberships={counts.memberships}"
         )
 
         try:
@@ -292,8 +379,17 @@ def main() -> int:
             smell_check_contract_date_types(session)
             print("OK: contract date field types")
 
-            smell_check_get_contracts_for_product_like_semantics(session)
+            smell_check_contracts_periods_coherence(session)
             print("OK: contracts/periods coherence + filterability")
+
+            smell_check_period_cycles_present(session)
+            print("OK: period cycles present + non-empty memberships")
+
+            smell_check_period_cycle_membership_uniqueness(session)
+            print("OK: period cycle membership uniqueness")
+
+            smell_check_calendar_month_mapping(session, expect_month=12)
+            print("OK: calendar month mapping spot-check (Dec)")
 
         except CheckFailed as e:
             failures.append(str(e))

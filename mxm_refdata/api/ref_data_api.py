@@ -1,17 +1,24 @@
 import logging
 from datetime import date
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from mxm_refdata.database.sql_session_manager import SQLSessionManager
 from mxm_refdata.mappings import (
     futures_contract_from_orm,
     futures_product_from_orm,
+    period_cycle_from_orm,
+    period_cycle_membership_from_orm,
     period_from_orm,
 )
 from mxm_refdata.models.contracts.futures_contract import FuturesContract
 from mxm_refdata.models.orm.futures_contracts import FuturesContractORM
 from mxm_refdata.models.orm.futures_products import FuturesProductORM
+from mxm_refdata.models.orm.period_cycles import (
+    PeriodCycleMembershipORM,
+    PeriodCycleORM,
+)
 from mxm_refdata.models.orm.periods import PeriodORM
+from mxm_refdata.models.period_cycles import PeriodCycle, PeriodCycleMembership
 from mxm_refdata.models.periods import Period, PeriodType
 from mxm_refdata.models.products.futures_product import FuturesProduct
 from mxm_refdata.services.bootstrap import ensure_refdata_ready
@@ -36,7 +43,9 @@ class RefDataAPI:
         self.session_manager = session_manager or SQLSessionManager(
             db_url=self.cfg.SQL_DB_URL
         )
-        self.cache = CacheManager(maxsize=10000)  # Add caching for faster access
+        self.cache: CacheManager[Any] = CacheManager(
+            maxsize=10000
+        )  # Add caching for faster access
         self.logger = logging.getLogger(__name__)
 
     def get_contract_by_id(self, contract_id: str) -> FuturesContract | None:
@@ -220,16 +229,16 @@ class RefDataAPI:
             pt = None
         elif isinstance(period_type, PeriodType):
             pt = period_type
-        elif isinstance(period_type, str):
+        else:
             try:
                 pt = PeriodType(period_type)
             except Exception as e:
                 raise ValueError(f"Unknown period_type {period_type!r}") from e
-        else:
-            raise TypeError(
-                f"period_type must be PeriodType | str | None, got {type(period_type).__name__}"
-            )
-        cache_key = f"contracts_for_product:{product_id}:period_type={pt.value if pt is not None else '*'}"
+
+        cache_key = (
+            f"contracts_for_product:{product_id}:"
+            f"period_type={pt.value if pt is not None else '*'}"
+        )
         if cached := self.cache.get(cache_key):
             return cached
 
@@ -241,33 +250,31 @@ class RefDataAPI:
                 futures_contract_from_orm(c) for c in contracts_orm
             ]
 
-            if not contracts:
-                self.cache.set(cache_key, [])
-                return []
+        if not contracts:
+            self.cache.set(cache_key, [])
+            return []
 
-            period_ids = {c.period_id for c in contracts}
+        # Bulk period lookup via API helper (cached internally)
+        period_ids = [c.period_id for c in contracts]
+        periods = self.get_periods_by_id(period_ids)
 
-            periods_orm = (
-                session.query(PeriodORM)
-                .filter(PeriodORM.period_id.in_(sorted(period_ids)))
-                .all()
-            )
-            period_by_id: Dict[str, Period] = {
-                p.period_id: period_from_orm(p) for p in periods_orm
-            }
+        # Build mapping for filtering / ordering.
+        # Note: get_periods_by_id preserves input order and ignores missing IDs;
+        # we must still map by id for joins.
+        period_by_id: Dict[str, Period] = {p.period_id: p for p in periods}
 
-            # Optional filter by Period.period_type (authoritative)
+        # Drop contracts whose period_id is missing from refdata (should be impossible,
+        # but we keep it explicit and non-silent in behaviour: missing periods => excluded).
+        contracts = [c for c in contracts if c.period_id in period_by_id]
 
-            if pt is not None:
-                contracts = [
-                    c
-                    for c in contracts
-                    if c.period_id in period_by_id
-                    and period_by_id[c.period_id].period_type == pt
-                ]
+        # Optional filter by Period.period_type (authoritative)
+        if pt is not None:
+            contracts = [
+                c for c in contracts if period_by_id[c.period_id].period_type == pt
+            ]
 
-            # Deterministic ordering: by Period (as defined in Period.__lt__), then contract_id
-            contracts.sort(key=lambda c: (period_by_id[c.period_id], c.contract_id))
+        # Deterministic ordering: by Period (as defined in Period.__lt__), then contract_id
+        contracts.sort(key=lambda c: (period_by_id[c.period_id], c.contract_id))
 
         self.cache.set(cache_key, contracts)
         return contracts
@@ -308,3 +315,222 @@ class RefDataAPI:
 
         self.cache.set(cache_key, result)
         return result
+
+    def get_period_by_id(self, period_id: str) -> Period | None:
+        """
+        Retrieve a single Period by its period_id, with caching.
+
+        Returns:
+            Period if found, otherwise None.
+        """
+        ensure_refdata_ready(self.session_manager, self.cfg)
+
+        cache_key = f"period:{period_id}"
+        if cached := self.cache.get(cache_key):
+            return cached
+
+        with self.session_manager.db_session_scope() as session:
+            period = session.query(PeriodORM).filter_by(period_id=period_id).first()
+            if period:
+                result = period_from_orm(period)
+                self.cache.set(cache_key, result)
+                return result
+
+        return None
+
+    def get_periods_by_id(self, period_ids: List[str]) -> List[Period]:
+        """
+        Retrieve multiple Periods by their period_id values.
+
+        Semantics:
+          - Returns only periods that are found (missing IDs are ignored).
+          - Preserves the input order of `period_ids`.
+          - Uses caching to avoid redundant DB queries.
+        """
+        ensure_refdata_ready(self.session_manager, self.cfg)
+
+        if not period_ids:
+            return []
+
+        ordered_ids = list(period_ids)
+        unique_ids = list(dict.fromkeys(period_ids))
+
+        cache_key = f"periods:ids:{','.join(unique_ids)}"
+        if cached := self.cache.get(cache_key):
+            by_id = {p.period_id: p for p in cached}
+            return [by_id[pid] for pid in ordered_ids if pid in by_id]
+
+        with self.session_manager.db_session_scope() as session:
+            periods = (
+                session.query(PeriodORM)
+                .filter(PeriodORM.period_id.in_(unique_ids))
+                .all()
+            )
+            result = [period_from_orm(p) for p in periods]
+
+        self.cache.set(cache_key, result)
+
+        by_id = {p.period_id: p for p in result}
+        return [by_id[pid] for pid in ordered_ids if pid in by_id]
+
+    def get_cycles(self) -> List[PeriodCycle]:
+        """
+        Retrieve all available PeriodCycle definitions.
+
+        Cached as a whole-list artifact; cycles are few and essentially static for a DB build.
+        """
+        ensure_refdata_ready(self.session_manager, self.cfg)
+
+        cache_key = "all_period_cycles"
+        if cached := self.cache.get(cache_key):
+            return cached
+
+        with self.session_manager.db_session_scope() as session:
+            cycles = (
+                session.query(PeriodCycleORM)
+                .order_by(PeriodCycleORM.cycle_id.asc())
+                .all()
+            )
+            result = [period_cycle_from_orm(c) for c in cycles]
+
+        self.cache.set(cache_key, result)
+        return result
+
+    def get_cycle_by_id(self, cycle_id: str) -> PeriodCycle | None:
+        """
+        Retrieve a single PeriodCycle by cycle_id, with caching.
+
+        Returns:
+            PeriodCycle if found, otherwise None.
+        """
+        ensure_refdata_ready(self.session_manager, self.cfg)
+
+        cache_key = f"period_cycle:{cycle_id}"
+        if cached := self.cache.get(cache_key):
+            return cached
+
+        with self.session_manager.db_session_scope() as session:
+            c = session.query(PeriodCycleORM).filter_by(cycle_id=cycle_id).first()
+            if c:
+                result = period_cycle_from_orm(c)
+                self.cache.set(cache_key, result)
+                return result
+
+        return None
+
+    def get_cycle_memberships(self, cycle_id: str) -> List[PeriodCycleMembership]:
+        """
+        Retrieve all memberships for a given cycle_id.
+
+        Semantics:
+          - Deterministically ordered by (cycle_instance, cycle_element, period_id).
+          - Cached by cycle_id.
+
+        This is primarily an inspection/audit surface. Selection logic should usually use
+        `get_cycle_elements(...)` for targeted lookup.
+        """
+        ensure_refdata_ready(self.session_manager, self.cfg)
+
+        cache_key = f"period_cycle_memberships:{cycle_id}"
+        if cached := self.cache.get(cache_key):
+            return cached
+
+        with self.session_manager.db_session_scope() as session:
+            rows = (
+                session.query(PeriodCycleMembershipORM)
+                .filter(PeriodCycleMembershipORM.cycle_id == cycle_id)
+                .order_by(
+                    PeriodCycleMembershipORM.cycle_instance.asc(),
+                    PeriodCycleMembershipORM.cycle_element.asc(),
+                    PeriodCycleMembershipORM.period_id.asc(),
+                )
+                .all()
+            )
+            result = [period_cycle_membership_from_orm(r) for r in rows]
+
+        self.cache.set(cache_key, result)
+        return result
+
+    def get_cycle_elements(
+        self,
+        period_ids: List[str],
+        *,
+        cycle_id: str,
+    ) -> Dict[str, int]:
+        """
+        Batch lookup: map period_id -> cycle_element for the given cycle.
+
+        This is the key surface needed by MXM V1 contract selection:
+            contract.period_id -> cycle element (e.g. month number, quarter number)
+
+        Semantics:
+          - Returns only found period_ids (missing IDs are omitted).
+          - Input order is not preserved (dict output); caller can re-order if needed.
+          - Cached by (cycle_id, unique(sorted(period_ids))).
+          - Deterministic query ordering, but the returned mapping is inherently unordered.
+
+        Returns:
+            Dict[str, int] mapping period_id -> cycle_element
+        """
+        ensure_refdata_ready(self.session_manager, self.cfg)
+
+        if not period_ids:
+            return {}
+
+        unique_ids = sorted(set(period_ids))
+        cache_key = f"period_cycle_elements:{cycle_id}:pids:{','.join(unique_ids)}"
+        if cached := self.cache.get(cache_key):
+            return cached
+
+        with self.session_manager.db_session_scope() as session:
+            rows = (
+                session.query(
+                    PeriodCycleMembershipORM.period_id,
+                    PeriodCycleMembershipORM.cycle_element,
+                )
+                .filter(
+                    PeriodCycleMembershipORM.cycle_id == cycle_id,
+                    PeriodCycleMembershipORM.period_id.in_(unique_ids),
+                )
+                .order_by(PeriodCycleMembershipORM.period_id.asc())
+                .all()
+            )
+
+        result: Dict[str, int] = {pid: int(elem) for (pid, elem) in rows}
+        self.cache.set(cache_key, result)
+        return result
+
+    def get_cycle_element(
+        self,
+        period_id: str,
+        *,
+        cycle_id: str,
+    ) -> int | None:
+        """
+        Convenience wrapper: lookup a single period_id -> cycle_element for a cycle.
+
+        Uses caching; implemented via a direct ORM query (not via get_cycle_elements)
+        to avoid building large cache keys for singleton usage.
+        """
+        ensure_refdata_ready(self.session_manager, self.cfg)
+
+        cache_key = f"period_cycle_element:{cycle_id}:{period_id}"
+        if cached := self.cache.get(cache_key):
+            return cached
+
+        with self.session_manager.db_session_scope() as session:
+            row = (
+                session.query(PeriodCycleMembershipORM.cycle_element)
+                .filter(
+                    PeriodCycleMembershipORM.cycle_id == cycle_id,
+                    PeriodCycleMembershipORM.period_id == period_id,
+                )
+                .first()
+            )
+
+        if row is None:
+            return None
+
+        elem = int(row[0])
+        self.cache.set(cache_key, elem)
+        return elem
