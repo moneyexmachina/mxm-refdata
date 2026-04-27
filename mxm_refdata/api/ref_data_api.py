@@ -26,6 +26,23 @@ from mxm_refdata.utils.cache_manager import CacheManager
 from mxm_refdata.utils.config import load_config
 
 
+class RefDataLookupError(KeyError):
+    """
+    Raised when a required reference data object cannot be found.
+
+    This error signals a violation of an invariant: the caller assumed that
+    the requested object exists in the curated reference dataset, but it
+    was not present.
+
+    Typical causes:
+    - contract_id not part of the prepared reference data universe
+    - reference data not built for the requested product/time range
+    - upstream data preparation incomplete or inconsistent
+
+    This is not a transient error and should not be silently ignored.
+    """
+
+
 class RefDataAPI:
     """
     API interface to access reference data stored in the database.
@@ -48,12 +65,28 @@ class RefDataAPI:
         )  # Add caching for faster access
         self.logger = logging.getLogger(__name__)
 
-    def get_contract_by_id(self, contract_id: str) -> FuturesContract | None:
+    def maybe_get_contract_by_id(self, contract_id: str) -> FuturesContract | None:
         """
-        Retrieve a single FuturesContract by its contract_id, with caching.
+        Retrieve a FuturesContract by its contract_id, if available.
+
+        This method performs a best-effort lookup against the curated reference
+        dataset. It is intended for boundary layers where partial coverage is
+        expected and must be handled explicitly.
+
+        The result may be None if the contract_id is not present in the current
+        reference dataset.
+
+        Args:
+            contract_id:
+                Canonical contract identifier.
 
         Returns:
             FuturesContract if found, otherwise None.
+
+        Usage:
+            Use this method when exploring or validating coverage, e.g.:
+            - checking whether a product universe has been prepared
+            - probing availability across time ranges
         """
         ensure_refdata_ready(self.session_manager, self.cfg)
 
@@ -67,12 +100,50 @@ class RefDataAPI:
                 .filter_by(contract_id=contract_id)
                 .first()
             )
-            if contract:
+            if contract is not None:
                 result = futures_contract_from_orm(contract)
                 self.cache.set(cache_key, result)
                 return result
 
         return None
+
+    def get_contract_by_id(self, contract_id: str) -> FuturesContract:
+        """
+        Retrieve a FuturesContract by its contract_id, enforcing existence.
+
+        This method assumes that the requested contract_id is valid and present
+        in the curated reference dataset. If the contract cannot be found, a
+        RefDataLookupError is raised.
+
+        This is the preferred method for use within typed execution code where
+        contract identities are already validated or constructed by the system.
+
+        Args:
+            contract_id:
+                Canonical contract identifier.
+
+        Returns:
+            FuturesContract (guaranteed to be present).
+
+        Raises:
+            RefDataLookupError:
+                If the contract_id is not found in the reference dataset.
+
+        Usage:
+            Use this method in invariant-bearing code paths, e.g.:
+            - execution, pricing, and PnL logic
+            - synthetic asset construction
+            - any context where missing contracts indicate a system error
+        """
+        contract = self.maybe_get_contract_by_id(contract_id)
+
+        if contract is None:
+            raise RefDataLookupError(
+                f"FuturesContract not found for contract_id='{contract_id}'. "
+                "This indicates missing or incomplete reference data."
+            )
+
+        return contract
 
     def get_contracts_by_id(self, contract_ids: List[str]) -> List[FuturesContract]:
         """
