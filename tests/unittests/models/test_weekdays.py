@@ -1,6 +1,6 @@
 import pytest
 
-from mxm_refdata.models.weekdays import Weekday
+from mxm.refdata.models.weekdays import Weekday
 
 
 @pytest.mark.parametrize(

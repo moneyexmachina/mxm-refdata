@@ -110,7 +110,7 @@ poetry install
 The recommended entrypoint for consumers is the **query API**.
 
 ```python
-from mxm_refdata.api.ref_data_api import RefDataAPI
+from mxm.refdata.api.ref_data_api import RefDataAPI
 
 api = RefDataAPI()
 

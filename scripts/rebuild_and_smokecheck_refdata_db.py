@@ -37,22 +37,22 @@ from typing import Iterable
 
 from sqlalchemy import func
 
-from mxm_refdata.database.sql_session_manager import SQLSessionManager
-from mxm_refdata.mappings import (
+from mxm.refdata.database.sql_session_manager import SQLSessionManager
+from mxm.refdata.mappings import (
     futures_contract_from_orm,
     futures_product_from_orm,
     period_from_orm,
 )
-from mxm_refdata.models.orm.futures_contracts import FuturesContractORM
-from mxm_refdata.models.orm.futures_products import FuturesProductORM
-from mxm_refdata.models.orm.period_cycles import (
+from mxm.refdata.models.orm.futures_contracts import FuturesContractORM
+from mxm.refdata.models.orm.futures_products import FuturesProductORM
+from mxm.refdata.models.orm.period_cycles import (
     PeriodCycleMembershipORM,
     PeriodCycleORM,
 )
-from mxm_refdata.models.orm.periods import PeriodORM
-from mxm_refdata.models.periods import PeriodType
-from mxm_refdata.services.ref_data_service import RefDataService
-from mxm_refdata.utils.period_types_codec import decode_period_types
+from mxm.refdata.models.orm.periods import PeriodORM
+from mxm.refdata.models.periods import PeriodType
+from mxm.refdata.services.ref_data_service import RefDataService
+from mxm.refdata.utils.period_types_codec import decode_period_types
 
 # Canonical cycle IDs (keep aligned with RefDataService initialisation)
 CYCLE_ID_CALENDAR_MONTHS = "CALENDAR_MONTHS"

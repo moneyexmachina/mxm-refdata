@@ -4,8 +4,8 @@ from datetime import date
 
 import pytest
 
-from mxm_refdata.models.periods import PeriodType
-from mxm_refdata.services.period_factory import PeriodFactory
+from mxm.refdata.models.periods import PeriodType
+from mxm.refdata.services.period_factory import PeriodFactory
 
 
 @pytest.fixture

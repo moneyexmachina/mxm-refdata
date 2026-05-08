@@ -2,14 +2,14 @@
 
 import pytest
 
-from mxm_refdata.mappings.futures_contract_vs_orm import (
+from mxm.refdata.mappings.futures_contract_vs_orm import (
     futures_contract_from_orm,
     futures_contract_to_orm,
 )
-from mxm_refdata.models.contracts.futures_contract import FuturesContract
-from mxm_refdata.models.currencies import Currency
-from mxm_refdata.models.orm.futures_contracts import FuturesContractORM
-from mxm_refdata.models.products.futures_product import ProductUnit
+from mxm.refdata.models.contracts.futures_contract import FuturesContract
+from mxm.refdata.models.currencies import Currency
+from mxm.refdata.models.orm.futures_contracts import FuturesContractORM
+from mxm.refdata.models.products.futures_product import ProductUnit
 
 
 @pytest.fixture

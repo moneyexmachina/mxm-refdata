@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from exchange_calendars.errors import DateOutOfBounds
 
-from mxm_refdata.trading_calendars.trading_calendar import TradingCalendar
+from mxm.refdata.trading_calendars.trading_calendar import TradingCalendar
 
 
 @pytest.fixture

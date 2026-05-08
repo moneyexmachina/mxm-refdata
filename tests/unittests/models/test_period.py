@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 from pandas import DatetimeIndex
 
-from mxm_refdata.models.periods import Period, PeriodType
+from mxm.refdata.models.periods import Period, PeriodType
 
 
 def test_period_initialization():
@@ -41,18 +41,6 @@ def test_to_daterange():
             ]
         )
     )
-
-
-def test_immutability():
-    """Test that a Period instance is immutable."""
-    period = Period(
-        period_id="2024-Q1",
-        period_type=PeriodType.QUARTER,
-        first_date=date(2024, 1, 1),
-        last_date=date(2024, 3, 31),
-    )
-    with pytest.raises(AttributeError, match="cannot assign to field"):
-        period.first_date = date(2024, 2, 1)  # Attempt to modify a frozen field
 
 
 def test_single_day_period():

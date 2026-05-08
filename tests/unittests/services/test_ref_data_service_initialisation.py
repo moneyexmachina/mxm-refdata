@@ -5,16 +5,16 @@ from datetime import date
 import pytest
 from sqlalchemy import create_engine
 
-from mxm_refdata.database.sql_session_manager import SQLSessionManager
-from mxm_refdata.models.contracts.futures_contract import FuturesContract
-from mxm_refdata.models.currencies import Currency
-from mxm_refdata.models.orm.futures_contracts import FuturesContractORM
-from mxm_refdata.models.orm.futures_products import FuturesProductORM
-from mxm_refdata.models.orm.periods import PeriodORM
-from mxm_refdata.models.periods import PeriodType
-from mxm_refdata.models.products.futures_product import FuturesProduct, SettlementMethod
-from mxm_refdata.models.units import ProductUnit
-from mxm_refdata.services.ref_data_service import RefDataService
+from mxm.refdata.database.sql_session_manager import SQLSessionManager
+from mxm.refdata.models.contracts.futures_contract import FuturesContract
+from mxm.refdata.models.currencies import Currency
+from mxm.refdata.models.orm.futures_contracts import FuturesContractORM
+from mxm.refdata.models.orm.futures_products import FuturesProductORM
+from mxm.refdata.models.orm.periods import PeriodORM
+from mxm.refdata.models.periods import PeriodType
+from mxm.refdata.models.products.futures_product import FuturesProduct, SettlementMethod
+from mxm.refdata.models.units import ProductUnit
+from mxm.refdata.services.ref_data_service import RefDataService
 
 
 @pytest.fixture(scope="module")

@@ -7,18 +7,18 @@ from pytest import MonkeyPatch
 from pytest_mock import MockerFixture
 from sqlalchemy import create_engine
 
-from mxm_refdata.api.ref_data_api import RefDataAPI
-from mxm_refdata.database.sql_session_manager import SQLSessionManager
-from mxm_refdata.mappings import (
+from mxm.refdata.api.ref_data_api import RefDataAPI
+from mxm.refdata.database.sql_session_manager import SQLSessionManager
+from mxm.refdata.mappings import (
     futures_contract_to_orm,
     futures_product_to_orm,
     period_to_orm,
 )
-from mxm_refdata.models.contracts.futures_contract import FuturesContract
-from mxm_refdata.models.currencies import Currency
-from mxm_refdata.models.periods import Period, PeriodType
-from mxm_refdata.models.products.futures_product import FuturesProduct, SettlementMethod
-from mxm_refdata.models.units import ProductUnit
+from mxm.refdata.models.contracts.futures_contract import FuturesContract
+from mxm.refdata.models.currencies import Currency
+from mxm.refdata.models.periods import Period, PeriodType
+from mxm.refdata.models.products.futures_product import FuturesProduct, SettlementMethod
+from mxm.refdata.models.units import ProductUnit
 
 
 @pytest.fixture(scope="module")
@@ -158,7 +158,7 @@ def test_auto_bootstrap_refused_managed(tmp_path, monkeypatch):
     monkeypatch.setenv("REFDATA_DB_MODE", "managed")
 
     # Import here to avoid coupling unit tests to bootstrap internals unless needed
-    from mxm_refdata.services.bootstrap import RefDataNotInitialisedError
+    from mxm.refdata.services.bootstrap import RefDataNotInitialisedError
 
     api = RefDataAPI()
     with pytest.raises(RefDataNotInitialisedError):

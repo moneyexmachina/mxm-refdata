@@ -2,9 +2,9 @@
 
 from datetime import date
 
-from mxm_refdata.mappings.period_vs_orm import period_from_orm, period_to_orm
-from mxm_refdata.models.orm.periods import PeriodORM
-from mxm_refdata.models.periods import Period, PeriodType
+from mxm.refdata.mappings.period_vs_orm import period_from_orm, period_to_orm
+from mxm.refdata.models.orm.periods import PeriodORM
+from mxm.refdata.models.periods import Period, PeriodType
 
 
 def test_period_to_orm():

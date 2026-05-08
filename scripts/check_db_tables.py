@@ -1,6 +1,6 @@
 from sqlalchemy import inspect
 
-from mxm_refdata.database.db_utils import default_engine, init_db
+from mxm.refdata.database.db_utils import default_engine, init_db
 
 if __name__ == "__main__":
     init_db()

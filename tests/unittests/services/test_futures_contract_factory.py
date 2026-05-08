@@ -5,11 +5,11 @@ from unittest.mock import patch
 
 import pytest
 
-from mxm_refdata.models.currencies import Currency
-from mxm_refdata.models.periods import Period, PeriodType
-from mxm_refdata.models.products.futures_product import FuturesProduct, SettlementMethod
-from mxm_refdata.models.units import ProductUnit
-from mxm_refdata.services.futures_contract_factory import FuturesContractFactory
+from mxm.refdata.models.currencies import Currency
+from mxm.refdata.models.periods import Period, PeriodType
+from mxm.refdata.models.products.futures_product import FuturesProduct, SettlementMethod
+from mxm.refdata.models.units import ProductUnit
+from mxm.refdata.services.futures_contract_factory import FuturesContractFactory
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from mxm_refdata.utils.config import load_config
+from mxm.refdata.utils.config import load_config
 
 
 def _clear_env(var: str):

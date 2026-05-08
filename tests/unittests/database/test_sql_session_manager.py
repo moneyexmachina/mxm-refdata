@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from mxm_refdata.database.sql_session_manager import SQLSessionManager
+from mxm.refdata.database.sql_session_manager import SQLSessionManager
 
 
 @pytest.fixture(scope="session")

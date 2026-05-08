@@ -4,11 +4,11 @@ from datetime import date
 
 import pytest
 
-from mxm_refdata.services.period_factory import PeriodFactory
-from mxm_refdata.trading_calendars.first_day_of_interest import (
+from mxm.refdata.services.period_factory import PeriodFactory
+from mxm.refdata.trading_calendars.first_day_of_interest import (
     calculate_first_day_of_interest,
 )
-from mxm_refdata.trading_calendars.trading_calendar import TradingCalendar
+from mxm.refdata.trading_calendars.trading_calendar import TradingCalendar
 
 
 @pytest.fixture

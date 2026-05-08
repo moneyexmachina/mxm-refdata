@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from mxm_refdata.utils.cache_manager import CacheManager
+from mxm.refdata.utils.cache_manager import CacheManager
 
 
 @pytest.fixture

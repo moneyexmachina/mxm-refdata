@@ -3,7 +3,7 @@ if __name__ == "__main__":
 
     print(xcals.get_calendar_names())
 
-    from mxm_refdata.utils.trading_calendars.trading_calendar import TradingCalendar
+    from mxm.refdata.utils.trading_calendars.trading_calendar import TradingCalendar
 
     trading_calendar = TradingCalendar("CME")
     print(trading_calendar.get_sessions_in_range("2025-07-01", "2025-07-30"))

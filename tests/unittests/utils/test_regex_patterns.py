@@ -1,7 +1,7 @@
 """Unit tests for regex_patterns in the utils module."""
 
-from mxm_refdata.models.periods import PeriodType
-from mxm_refdata.utils.regex_patterns import PERIOD_TYPE_PARSING_MAP
+from mxm.refdata.models.periods import PeriodType
+from mxm.refdata.utils.regex_patterns import PERIOD_TYPE_PARSING_MAP
 
 
 def test_period_type_parsing_map_keys():

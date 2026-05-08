@@ -2,7 +2,7 @@
 
 import pytest
 
-from mxm_refdata.models.months import Month
+from mxm.refdata.models.months import Month
 
 
 def test_month_initialization():
