@@ -1,9 +1,9 @@
 """SQL Session Manager for handling database interactions."""
 
 import logging
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Iterator
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker

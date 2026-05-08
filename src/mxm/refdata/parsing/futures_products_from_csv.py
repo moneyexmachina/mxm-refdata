@@ -41,7 +41,7 @@ def parse_futures_products_csv(csv_file_path: str) -> list[FuturesProduct]:
             raise ValueError(f"required numeric field {field!r} is empty")
         return float(s)
 
-    with open(csv_file_path, mode="r", encoding="utf-8-sig") as csvfile:
+    with open(csv_file_path, encoding="utf-8-sig") as csvfile:
         reader = csv.DictReader(csvfile)
         products: list[FuturesProduct] = []
 

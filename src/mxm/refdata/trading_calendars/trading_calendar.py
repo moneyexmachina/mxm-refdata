@@ -1,5 +1,4 @@
 import datetime
-from typing import List
 
 import exchange_calendars as xcals
 import pandas as pd
@@ -70,7 +69,7 @@ class TradingCalendar:
 
     def get_session_dates_in_range(
         self, start: datetime.date, end: datetime.date
-    ) -> List[datetime.date]:
+    ) -> list[datetime.date]:
         """
         Returns trading session dates in a given range.
 

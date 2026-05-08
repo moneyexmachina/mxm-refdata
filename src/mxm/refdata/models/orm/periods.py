@@ -25,6 +25,6 @@ class PeriodORM(Base):
     first_date: Mapped[date] = mapped_column(Date, nullable=False)
     last_date: Mapped[date] = mapped_column(Date, nullable=False)
 
-    contracts: Mapped[list["FuturesContractORM"]] = relationship(
+    contracts: Mapped[list[FuturesContractORM]] = relationship(
         "FuturesContractORM", back_populates="period"
     )

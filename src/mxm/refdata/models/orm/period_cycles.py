@@ -58,12 +58,12 @@ class PeriodCycleMembershipORM(Base):
     cycle_element: Mapped[int] = mapped_column(nullable=False)
 
     # Relationships
-    cycle: Mapped["PeriodCycleORM"] = relationship(
+    cycle: Mapped[PeriodCycleORM] = relationship(
         back_populates="memberships",
         lazy="select",
     )
 
-    period: Mapped["PeriodORM"] = relationship(
+    period: Mapped[PeriodORM] = relationship(
         lazy="select",
     )
 

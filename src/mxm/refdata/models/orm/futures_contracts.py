@@ -47,7 +47,7 @@ class FuturesContractORM(Base):
     last_trading_day: Mapped[date] = mapped_column(Date, nullable=False)
 
     # Relationships
-    product: Mapped["FuturesProductORM"] = relationship(
+    product: Mapped[FuturesProductORM] = relationship(
         "FuturesProductORM", back_populates="contracts"
     )
-    period: Mapped["PeriodORM"] = relationship("PeriodORM", back_populates="contracts")
+    period: Mapped[PeriodORM] = relationship("PeriodORM", back_populates="contracts")

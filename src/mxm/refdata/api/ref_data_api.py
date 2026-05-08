@@ -1,6 +1,6 @@
 import logging
 from datetime import date
-from typing import Any, Dict, List
+from typing import Any
 
 from mxm.refdata.database.sql_session_manager import SQLSessionManager
 from mxm.refdata.mappings import (
@@ -145,7 +145,7 @@ class RefDataAPI:
 
         return contract
 
-    def get_contracts_by_id(self, contract_ids: List[str]) -> List[FuturesContract]:
+    def get_contracts_by_id(self, contract_ids: list[str]) -> list[FuturesContract]:
         """
         Retrieve multiple FuturesContracts by their contract_id values.
 
@@ -189,8 +189,8 @@ class RefDataAPI:
         as_of_date: date,
         *,
         product_id: str | None = None,
-        product_ids: List[str] | None = None,
-    ) -> List[FuturesContract]:
+        product_ids: list[str] | None = None,
+    ) -> list[FuturesContract]:
         """
         Retrieve contracts that are "active" (in MXM sense) on a given date, defined as:
 
@@ -240,7 +240,7 @@ class RefDataAPI:
         self.cache.set(cache_key, result)
         return result
 
-    def get_all_products(self) -> List[FuturesProduct]:
+    def get_all_products(self) -> list[FuturesProduct]:
         """Retrieve all futures products, with caching."""
 
         ensure_refdata_ready(self.session_manager, self.cfg)
@@ -281,7 +281,7 @@ class RefDataAPI:
         product_id: str,
         *,
         period_type: PeriodType | str | None = None,
-    ) -> List[FuturesContract]:
+    ) -> list[FuturesContract]:
         """
         Retrieve all contracts for a given product, optionally filtered by period_type.
 
@@ -317,7 +317,7 @@ class RefDataAPI:
             contracts_orm = (
                 session.query(FuturesContractORM).filter_by(product_id=product_id).all()
             )
-            contracts: List[FuturesContract] = [
+            contracts: list[FuturesContract] = [
                 futures_contract_from_orm(c) for c in contracts_orm
             ]
 
@@ -332,7 +332,7 @@ class RefDataAPI:
         # Build mapping for filtering / ordering.
         # Note: get_periods_by_id preserves input order and ignores missing IDs;
         # we must still map by id for joins.
-        period_by_id: Dict[str, Period] = {p.period_id: p for p in periods}
+        period_by_id: dict[str, Period] = {p.period_id: p for p in periods}
 
         # Drop contracts whose period_id is missing from refdata (should be impossible,
         # but we keep it explicit and non-silent in behaviour: missing periods => excluded).
@@ -350,7 +350,7 @@ class RefDataAPI:
         self.cache.set(cache_key, contracts)
         return contracts
 
-    def get_contracts_for_date(self, target_date: date) -> List[FuturesContract]:
+    def get_contracts_for_date(self, target_date: date) -> list[FuturesContract]:
         """Retrieve contracts that are in their delivery period on a given date."""
         ensure_refdata_ready(self.session_manager, self.cfg)
 
@@ -373,7 +373,7 @@ class RefDataAPI:
         self.cache.set(cache_key, result)
         return result
 
-    def get_periods(self) -> List[Period]:
+    def get_periods(self) -> list[Period]:
         """Retrieve all available periods."""
         ensure_refdata_ready(self.session_manager, self.cfg)
         cache_key = "all_periods"
@@ -409,7 +409,7 @@ class RefDataAPI:
 
         return None
 
-    def get_periods_by_id(self, period_ids: List[str]) -> List[Period]:
+    def get_periods_by_id(self, period_ids: list[str]) -> list[Period]:
         """
         Retrieve multiple Periods by their period_id values.
 
@@ -444,7 +444,7 @@ class RefDataAPI:
         by_id = {p.period_id: p for p in result}
         return [by_id[pid] for pid in ordered_ids if pid in by_id]
 
-    def get_cycles(self) -> List[PeriodCycle]:
+    def get_cycles(self) -> list[PeriodCycle]:
         """
         Retrieve all available PeriodCycle definitions.
 
@@ -489,7 +489,7 @@ class RefDataAPI:
 
         return None
 
-    def get_cycle_memberships(self, cycle_id: str) -> List[PeriodCycleMembership]:
+    def get_cycle_memberships(self, cycle_id: str) -> list[PeriodCycleMembership]:
         """
         Retrieve all memberships for a given cycle_id.
 
@@ -524,10 +524,10 @@ class RefDataAPI:
 
     def get_cycle_elements(
         self,
-        period_ids: List[str],
+        period_ids: list[str],
         *,
         cycle_id: str,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """
         Batch lookup: map period_id -> cycle_element for the given cycle.
 
@@ -567,7 +567,7 @@ class RefDataAPI:
                 .all()
             )
 
-        result: Dict[str, int] = {pid: int(elem) for (pid, elem) in rows}
+        result: dict[str, int] = {pid: int(elem) for (pid, elem) in rows}
         self.cache.set(cache_key, result)
         return result
 

@@ -2,7 +2,6 @@
 
 import logging
 from datetime import date
-from typing import List
 
 from sqlalchemy.orm import DeclarativeBase
 
@@ -186,7 +185,7 @@ class RefDataService:
         with self.session_manager.db_session_scope() as session:
             existing_period_ids = {p.period_id for p in session.query(PeriodORM).all()}
 
-        new_periods: List[Period] = []
+        new_periods: list[Period] = []
         for period_type in period_types:
             generated_periods = self.period_factory.get_periods_in_range(
                 start_date, end_date, period_type
@@ -237,7 +236,7 @@ class RefDataService:
                 )
 
         # Generate contracts outside of session
-        contracts: List[FuturesContract] = []
+        contracts: list[FuturesContract] = []
         for product in products:
             product_contracts = self.contract_factory.create_contracts_for_product(
                 product, periods

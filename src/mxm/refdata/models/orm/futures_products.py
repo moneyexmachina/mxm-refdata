@@ -54,7 +54,7 @@ class FuturesProductORM(Base):
     initial_margin: Mapped[float | None] = mapped_column(Float, nullable=True)
     maintenance_margin: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    contracts: Mapped[list["FuturesContractORM"]] = relationship(
+    contracts: Mapped[list[FuturesContractORM]] = relationship(
         "FuturesContractORM",
         back_populates="product",
         cascade="all, delete-orphan",
