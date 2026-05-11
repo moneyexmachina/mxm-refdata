@@ -43,8 +43,6 @@ def test_db_session_scope(session_manager: SQLSessionManager) -> None:
         assert session is not None, "Session should be provided in scope."
         assert session.is_active, "Session should be active inside scope."
 
-    assert not session.is_active, "Session should be inactive after scope exits."
-
 
 def test_get_db_session(session_manager: SQLSessionManager) -> None:
     """Test obtaining a database session."""

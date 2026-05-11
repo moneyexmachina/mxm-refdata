@@ -3,7 +3,8 @@
 import datetime
 from dataclasses import dataclass
 
-from mxm.refdata.models import Currency, ProductUnit
+from mxm.refdata.models.currencies import Currency
+from mxm.refdata.models.units import ProductUnit
 
 
 @dataclass(frozen=True)

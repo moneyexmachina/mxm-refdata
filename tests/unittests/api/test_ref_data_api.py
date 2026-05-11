@@ -8,7 +8,7 @@ from pytest import MonkeyPatch
 from pytest_mock import MockerFixture
 from sqlalchemy import create_engine
 
-from mxm.refdata.api.ref_data_api import RefDataAPI
+from mxm.refdata.api.ref_data_api import RefDataAPI, RefDataLookupError
 from mxm.refdata.database.sql_session_manager import SQLSessionManager
 from mxm.refdata.mappings import (
     futures_contract_to_orm,
@@ -477,10 +477,18 @@ def test_get_contract_by_id_found(ref_data_api: RefDataAPI):
 
 
 @pytest.mark.usefixtures("mock_data")
-def test_get_contract_by_id_missing(ref_data_api: RefDataAPI):
-    """get_contract_by_id should return None when the contract does not exist."""
-    contract = ref_data_api.get_contract_by_id("does_not_exist")
-    assert contract is None, "Expected None for missing contract."
+def test_get_contract_by_id_missing(ref_data_api: RefDataAPI) -> None:
+    """get_contract_by_id should raise when the contract does not exist."""
+    with pytest.raises(RefDataLookupError):
+        ref_data_api.get_contract_by_id("does_not_exist")
+
+
+@pytest.mark.usefixtures("mock_data")
+def test_maybe_get_contract_by_id_missing(ref_data_api: RefDataAPI) -> None:
+    """maybe_get_contract_by_id should return None when the contract does not exist."""
+    contract = ref_data_api.maybe_get_contract_by_id("does_not_exist")
+
+    assert contract is None
 
 
 def test_get_contracts_by_id_preserves_order_and_ignores_missing(
