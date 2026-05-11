@@ -2,6 +2,7 @@
 
 import datetime
 import threading
+from typing import ClassVar
 
 from mxm.refdata.models.contracts.futures_contract import FuturesContract
 from mxm.refdata.models.months import Month
@@ -19,7 +20,7 @@ class FuturesContractFactory:
 
     _instance = None  # Singleton instance
     _lock = threading.Lock()  # Lock for thread safety
-    _cache: dict[str, FuturesContract] = {}  # Cache for created contracts
+    _cache: ClassVar[dict[str, FuturesContract]] = {}  # Cache for created contracts
 
     def __new__(cls) -> "FuturesContractFactory":
         """Ensures only one instance of FuturesContractFactory is created."""

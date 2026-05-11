@@ -41,9 +41,9 @@ def test_db_session_scope(session_manager):
         assert session.is_active, "Session should be active inside scope."
 
     # Verify session is closed by checking `_is_active`
-    assert not getattr(session, "_is_active", False), (
-        "Session should be inactive after scope exits."
-    )
+    assert not getattr(
+        session, "_is_active", False
+    ), "Session should be inactive after scope exits."
 
 
 def test_get_db_session(session_manager):
@@ -66,9 +66,9 @@ def test_drop_db(session_manager):
 def test_check_db_connection(session_manager):
     """Test if database connection check works."""
     session_manager.init_db()  # Ensure DB is initialized before checking
-    assert session_manager.check_db_connection() is True, (
-        "Database connection should be active."
-    )
+    assert (
+        session_manager.check_db_connection() is True
+    ), "Database connection should be active."
 
 
 def test_get_session_factory_default(session_manager):
@@ -76,9 +76,9 @@ def test_get_session_factory_default(session_manager):
     session_factory = session_manager.get_session_factory()
     assert session_factory is not None, "Default session factory should not be None."
     assert callable(session_factory), "Session factory should be a callable."
-    assert isinstance(session_factory(), Session), (
-        "Session factory should return a valid SQLAlchemy session."
-    )
+    assert isinstance(
+        session_factory(), Session
+    ), "Session factory should return a valid SQLAlchemy session."
 
 
 def test_get_session_factory_custom(session_manager, session_factory):
@@ -87,12 +87,12 @@ def test_get_session_factory_custom(session_manager, session_factory):
         engine=session_manager.get_engine(), session_factory=session_factory
     )
 
-    assert custom_session_manager.get_session_factory() is session_factory, (
-        "Expected the provided session factory."
-    )
-    assert callable(custom_session_manager.get_session_factory()), (
-        "Session factory should be a callable."
-    )
+    assert (
+        custom_session_manager.get_session_factory() is session_factory
+    ), "Expected the provided session factory."
+    assert callable(
+        custom_session_manager.get_session_factory()
+    ), "Session factory should be a callable."
     assert isinstance(
         custom_session_manager.get_session_factory()(),
         Session,

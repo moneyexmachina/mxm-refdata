@@ -11,7 +11,7 @@ from mxm.refdata.trading_calendars.trading_calendar import TradingCalendar
 
 # Load first_day_of_interest rules from JSON file
 FIRST_DAY_OF_INTEREST_RULES = json.loads(
-    files("mxm_refdata")
+    files("mxm.refdata")
     .joinpath("data/first_day_of_interest_rule.json")
     .read_text(encoding="utf-8")
 )

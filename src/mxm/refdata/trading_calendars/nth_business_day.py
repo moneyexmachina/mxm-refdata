@@ -46,7 +46,7 @@ def get_nth_business_day_of_period(
     # Ensure we return a date object, not a timestamp
     try:
         return business_days[n - 1].date() if n > 0 else business_days[n].date()
-    except IndexError:
+    except IndexError as err:
         raise ValueError(
             f"The {n}-th business day does not exist in {period.period_id}."
-        )
+        ) from err

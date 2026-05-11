@@ -409,4 +409,4 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except CheckFailed as e:
         print(f"FAILED: {e}")
-        raise SystemExit(1)
+        raise SystemExit(1) from e

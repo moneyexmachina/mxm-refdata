@@ -1,5 +1,3 @@
-# mxm_refdata/models/period_cycles.py
-
 from __future__ import annotations
 
 from dataclasses import dataclass

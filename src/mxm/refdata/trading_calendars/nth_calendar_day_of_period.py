@@ -37,7 +37,7 @@ def get_nth_calendar_day_of_period(period: Period, n: int) -> datetime.date:
         return (
             all_days[n - 1].date() if n > 0 else all_days[n].date()
         )  # Adjust for 1-based indexing
-    except IndexError:
+    except IndexError as err:
         raise ValueError(
             f"The {n}-th calendar day does not exist in {period.period_id}."
-        )
+        ) from err

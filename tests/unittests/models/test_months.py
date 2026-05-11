@@ -15,10 +15,12 @@ def test_month_initialization():
 
 def test_invalid_month_initialization():
     """Test that invalid Month initialization raises a ValueError."""
-    with pytest.raises(ValueError, match="Invalid month: 0. Must be between 1 and 12."):
+    with pytest.raises(
+        ValueError, match=r"Invalid month: 0\. Must be between 1 and 12\."
+    ):
         Month(0)
     with pytest.raises(
-        ValueError, match="Invalid month: 13. Must be between 1 and 12."
+        ValueError, match=r"Invalid month: 13\. Must be between 1 and 12\."
     ):
         Month(13)
 

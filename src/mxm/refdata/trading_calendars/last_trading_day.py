@@ -19,7 +19,7 @@ from mxm.refdata.trading_calendars.trading_calendar import TradingCalendar
 
 # Load trading rules from packaged JSON file
 TRADING_RULES = json.loads(
-    files("mxm_refdata")
+    files("mxm.refdata")
     .joinpath("data/last_trading_rule.json")
     .read_text(encoding="utf-8")
 )

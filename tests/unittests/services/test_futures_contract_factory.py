@@ -189,7 +189,7 @@ def mock_first_day_of_interest_rules():
 def patched_trading_rules(mock_trading_rules):
     """Patch TRADING_RULES so test products have valid trading rules."""
     with patch(
-        "mxm_refdata.trading_calendars.last_trading_day.TRADING_RULES",
+        "mxm.refdata.trading_calendars.last_trading_day.TRADING_RULES",
         mock_trading_rules,
     ):
         yield
@@ -199,7 +199,7 @@ def patched_trading_rules(mock_trading_rules):
 def patched_first_day_of_interest_rules(mock_first_day_of_interest_rules):
     """Patch TRADING_RULES so test products have valid trading rules."""
     with patch(
-        "mxm_refdata.trading_calendars.first_day_of_interest.FIRST_DAY_OF_INTEREST_RULES",
+        "mxm.refdata.trading_calendars.first_day_of_interest.FIRST_DAY_OF_INTEREST_RULES",
         mock_first_day_of_interest_rules,
     ):
         yield

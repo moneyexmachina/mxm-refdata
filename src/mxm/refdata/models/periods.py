@@ -5,7 +5,7 @@ from datetime import date
 from enum import Enum
 from functools import total_ordering
 
-from pandas import DatetimeIndex, date_range
+import pandas as pd
 
 
 class PeriodType(Enum):
@@ -18,7 +18,6 @@ class PeriodType(Enum):
     DAY = "day"
 
 
-# Define sorting priority for period types
 PERIOD_PRIORITY = {
     PeriodType.YEAR: 1,
     PeriodType.QUARTER: 2,
@@ -52,8 +51,6 @@ class Period:
 
     def __lt__(self, other: "Period") -> bool:
         """Define sorting: higher-level periods (Year > Month) first, then by start date."""
-        if not isinstance(other, Period):
-            return NotImplemented
 
         if PERIOD_PRIORITY[self.period_type] != PERIOD_PRIORITY[other.period_type]:
             return (
@@ -62,6 +59,6 @@ class Period:
 
         return self.first_date < other.first_date
 
-    def to_daterange(self) -> DatetimeIndex:
+    def to_daterange(self) -> pd.DatetimeIndex:
         """Return a pandas date_range from first_date to last_date, with daily frequency."""
-        return date_range(self.first_date, self.last_date, freq="D")
+        return pd.date_range(self.first_date, self.last_date, freq="D")

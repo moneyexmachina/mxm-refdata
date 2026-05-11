@@ -1,5 +1,3 @@
-# mxm_refdata/models/orm/period_cycles.py
-
 from __future__ import annotations
 
 from sqlalchemy import ForeignKey, UniqueConstraint

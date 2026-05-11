@@ -31,16 +31,18 @@ def get_nth_weekday_of_period(
     # Convert weekday string to integer if needed
     if isinstance(weekday, str):
         weekday = Weekday.from_str(weekday).as_int
-
+    period_range = period.to_daterange()
     # Get all dates in the period and filter for matching weekdays
-    dates = [date for date in period.to_daterange() if date.weekday() == weekday]
+    dates: list[datetime.date] = [
+        date for date in period_range if date.weekday() == weekday
+    ]
 
     # Handle both forward (n > 0) and reverse (n < 0) indexing
     try:
         return (
             dates[n - 1].date() if n > 0 else dates[n].date()
         )  # Python negative index works naturally
-    except IndexError:
+    except IndexError as err:
         raise ValueError(
             f"The {n}-th occurrence of weekday {weekday} does not exist in {period.period_id}."
-        )
+        ) from err

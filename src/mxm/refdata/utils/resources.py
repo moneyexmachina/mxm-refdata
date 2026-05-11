@@ -24,6 +24,6 @@ def futures_products_csv_path(cfg: Config) -> Iterator[Path]:
         yield Path(override)
         return
 
-    resource = files("mxm_refdata").joinpath("data/futures_products.csv")
+    resource = files("mxm.refdata").joinpath("data/futures_products.csv")
     with as_file(resource) as p:
         yield Path(p)

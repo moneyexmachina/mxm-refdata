@@ -99,7 +99,7 @@ def test_initialise_futures_products(
 ):
     """Test that futures products are correctly loaded from a CSV file."""
     mocker.patch(
-        "mxm_refdata.services.futures_product_factory.FuturesProductFactory.initialise_from_csv",
+        "mxm.refdata.services.futures_product_factory.FuturesProductFactory.initialise_from_csv",
         return_value=futures_products,
     )
 
@@ -126,13 +126,13 @@ def test_initialise_futures_contracts(
     )
 
     mocker.patch(
-        "mxm_refdata.services.futures_product_factory.FuturesProductFactory.initialise_from_csv",
+        "mxm.refdata.services.futures_product_factory.FuturesProductFactory.initialise_from_csv",
         return_value=futures_products,
     )
     ref_data_service.initialise_futures_products()
 
     mocker.patch(
-        "mxm_refdata.services.futures_contract_factory.FuturesContractFactory.create_contracts_for_product",
+        "mxm.refdata.services.futures_contract_factory.FuturesContractFactory.create_contracts_for_product",
         return_value=futures_contracts,
     )
 
@@ -157,12 +157,12 @@ def test_setup_instruments(
 ):
     """Test that setup_instruments correctly initializes all entities in sequence."""
     mocker.patch(
-        "mxm_refdata.services.futures_product_factory.FuturesProductFactory.initialise_from_csv",
+        "mxm.refdata.services.futures_product_factory.FuturesProductFactory.initialise_from_csv",
         return_value=futures_products,
     )
 
     mocker.patch(
-        "mxm_refdata.services.futures_contract_factory.FuturesContractFactory.create_contracts_for_product",
+        "mxm.refdata.services.futures_contract_factory.FuturesContractFactory.create_contracts_for_product",
         return_value=futures_contracts,
     )
 

@@ -49,7 +49,7 @@ def ref_data_api(db_session_manager: SQLSessionManager, monkeypatch: MonkeyPatch
     # Patch the bootstrap hook used inside RefDataAPI methods (if present)
     # This patch is intentionally scoped to tests using this fixture.
     monkeypatch.setattr(
-        "mxm_refdata.api.ref_data_api.ensure_refdata_ready",
+        "mxm.refdata.api.ref_data_api.ensure_refdata_ready",
         lambda *_args, **_kwargs: None,
         raising=False,
     )

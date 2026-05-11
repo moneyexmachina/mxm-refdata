@@ -2,11 +2,10 @@
 
 This document records the process of re-familiarisation with the codebase by reading through the test suite and mapping observed behaviour back to modules.
 
----
 
 ## API Layer
 
-### Module: `mxm_refdata/api/ref_data_api.py`
+### Module: `src/mxm/refdata/api/ref_data_api.py`
 - **Test file**: `tests/unittests/api/test_ref_data_api.py`
 
 #### Observed behaviour (from tests)
@@ -38,7 +37,7 @@ This document records the process of re-familiarisation with the codebase by rea
 
 ## Database
 
-### Module: `mxm_refdata/database/sql_session_manager.py`
+### Module: `src/mxm/refdata/database/sql_session_manager.py`
 - **Test file**: `tests/unittests/database/test_sql_session_manager.py`
 #### Observed behaviour (from tests)
 - Context manager `db_session_scope` opens, commits, and closes sessions correctly.
@@ -70,7 +69,7 @@ This document records the process of re-familiarisation with the codebase by rea
 
 ## Mappings
 
-### Module: `mxm_refdata/mappings/futures_contract_vs_orm.py`
+### Module: `src/mxm/refdata/mappings/futures_contract_vs_orm.py`
 - **Test file**: `tests/unittests/mappings/test_futures_contract_vs_orm.py`
 #### Observed behaviour (from tests)
 - `futures_contract_to_orm()` correctly maps a domain `FuturesContract` into a `FuturesContractORM`.
@@ -102,7 +101,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Extend type hints for clarity: explicit return type in round-trip scenarios.
 
 
-### Module: `mxm_refdata/mappings/futures_product_vs_orm.py`
+### Module: `src/mxm/refdata/mappings/futures_product_vs_orm.py`
 - **Test file**: `tests/unittests/mappings/test_futures_product_vs_orm.py`
 
 #### Observed behaviour (from tests)
@@ -140,7 +139,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Add detailed docstrings clarifying each attribute’s role in both domain and ORM.
 
 
-### Module: `mxm_refdata/mappings/orm_converter.py`
+### Module: `src/mxm/refdata/mappings/orm_converter.py`
 - **Test file**: `tests/unittests/mappings/test_orm_converter.py`
 
 #### Observed behaviour (from tests)
@@ -179,7 +178,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Consider adding bulk conversion utilities (`list[domain] ↔ list[ORM]`).
 - Document clearly in docstrings that this module is the **single source of truth** for ORM/domain conversions.
 
-### Module: `mxm_refdata/mappings/period_vs_orm.py`
+### Module: `src/mxm/refdata/mappings/period_vs_orm.py`
 - **Test file**: `tests/unittests/mappings/test_period_vs_orm.py`
 
 #### Observed behaviour (from tests)
@@ -215,7 +214,7 @@ This document records the process of re-familiarisation with the codebase by rea
 ## Models
 
 
-### Module: `mxm_refdata/models/products/futures_product.py`
+### Module: `src/mxm/refdata/models/products/futures_product.py`
 - **Test file**: `tests/unittests/models/products/test_futures_product.py`
 
 #### Observed behaviour (from tests)
@@ -257,7 +256,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Possibly add validation or helper methods for interpreting rules.
 
 
-### Module: `mxm_refdata/models/contracts/futures_contract.py`
+### Module: `src/mxm/refdata/models/contracts/futures_contract.py`
 - **Test file**: *(none currently implemented)*
 
 #### Implementation
@@ -301,7 +300,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Expand service/factory tests to include contract object verification.
 - Add docstring examples to clarify intended use in context of product/period.
 
-### Module: `mxm_refdata/models/months.py`
+### Module: `src/mxm/refdata/models/months.py`
 - **Test file**: `tests/unittests/models/test_months.py`
 
 #### Observed behaviour (from tests)
@@ -339,7 +338,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Extend docstrings with examples of CME codes and abbreviations.
 
 
-### Module: `mxm_refdata/models/currencies.py`
+### Module: `src/mxm/refdata/models/currencies.py`
 - **Test file**: *(none currently implemented)*
 
 #### Implementation
@@ -368,7 +367,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Add documentation/example usage in context of products/contracts.
 - Consider extending coverage to all ISO 4217 currencies (currently only a subset).
 
-### Module: `mxm_refdata/models/periods.py`
+### Module: `src/mxm/refdata/models/periods.py`
 - **Test file**: `tests/unittests/models/test_period.py`
 
 #### Observed behaviour (from tests)
@@ -413,7 +412,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Consider adding helper constructors (`Period.from_year(2024)`, `Period.from_month(2024, 1)`).
 - Explore extending `PeriodType` with trading-specific categories (if required by business logic).
 
-### Module: `mxm_refdata/models/weekdays.py`
+### Module: `src/mxm/refdata/models/weekdays.py`
 - **Test file**: `tests/unittests/models/test_weekdays.py`
 
 #### Observed behaviour (from tests)
@@ -454,10 +453,10 @@ This document records the process of re-familiarisation with the codebase by rea
 - Consider adding helper functions (`Weekday.monday()`, `Weekday.sunday()`) for readability.
 
 ### Modules: ORM Models
-- `mxm_refdata/models/orm/futures_contracts.py`
-- `mxm_refdata/models/orm/futures_products.py`
-- `mxm_refdata/models/orm/periods.py`
-- `mxm_refdata/models/orm/base.py`
+- `src/mxm/refdata/models/orm/futures_contracts.py`
+- `src/mxm/refdata/models/orm/futures_products.py`
+- `src/mxm/refdata/models/orm/periods.py`
+- `src/mxm/refdata/models/orm/base.py`
 
 #### Implementation
 - **`Base`**
@@ -504,7 +503,7 @@ This document records the process of re-familiarisation with the codebase by rea
 
 #### Observed behaviour
 - Provide persistent storage for core reference data entities (Products, Contracts, Periods).
-- Mirror the structure of domain models in `mxm_refdata.models`, enabling bidirectional mapping via `orm_converter`.
+- Mirror the structure of domain models in `mxm.refdata.models`, enabling bidirectional mapping via `orm_converter`.
 - Enforce referential integrity (contracts link to products and periods).
 
 #### Not covered by tests
@@ -526,7 +525,7 @@ This document records the process of re-familiarisation with the codebase by rea
   - Current files are plural (`futures_contracts.py`) but classes are singular (`FuturesContractORM`).
   - To avoid confusion, renaming files to singular (`futures_contract_orm.py`, `futures_product_orm.py`, `period_orm.py`) would better match the class names and conventions.
 
-### Module: `mxm_refdata/models/units.py`
+### Module: `/src/mxm/refdata/models/units.py`
 - **Test file**: *(none currently implemented)*
 
 #### Implementation
@@ -560,7 +559,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Decide whether currency units like `GBP` belong here or exclusively in `currencies.py` (possible cleanup task).
 
 
-### Module: `mxm_refdata/models/reference_events.py`
+### Module: `src/mxm/refdata/models/reference_events.py`
 - **Test file**: *(none currently implemented)*
 
 #### Implementation
@@ -589,7 +588,7 @@ This document records the process of re-familiarisation with the codebase by rea
 
 ## Parsing
 
-### Module: `mxm_refdata/parsing/futures_products_from_csv.py`
+### Module: `src/mxm/refdata/parsing/futures_products_from_csv.py`
 - **Test file**: `tests/unittests/parsing/test_futures_products_from_csv.py`
 
 #### Observed behaviour (from tests)
@@ -633,7 +632,7 @@ This document records the process of re-familiarisation with the codebase by rea
 
 ## Services / Factories
 
-### Module: `mxm_refdata/services/futures_contract_factory.py`
+### Module: `src/mxm/refdata/services/futures_contract_factory.py`
 - **Test file**: `tests/unittests/services/test_futures_contract_factory.py`
 
 #### Observed behaviour (from tests)
@@ -687,7 +686,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Document caching behaviour explicitly in docstrings.
 - Consider exposing `get_contract_by_id` for external cache access.
 
-### Module: `mxm_refdata/services/futures_product_factory.py`
+### Module: `src/mxm/refdata/services/futures_product_factory.py`
 - **Test file**: *(none currently implemented)*
 
 #### Implementation
@@ -734,7 +733,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Add docstring examples for CSV initialization and cache usage.
 
 
-### Module: `mxm_refdata/services/period_factory.py`
+### Module: `src/mxm/refdata/services/period_factory.py`
 - **Test file**: `tests/unittests/services/test_period_factory.py`
 
 #### Observed behaviour (from tests)
@@ -793,7 +792,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Add docstring usage examples for shifting and range generation.
 
 
-### Module: `mxm_refdata/services/ref_data_service.py`
+### Module: `src/mxm/refdata/services/ref_data_service.py`
 - **Test file**: `tests/unittests/services/test_ref_data_service_initialisation.py`
 
 #### Observed behaviour (from tests)
@@ -855,7 +854,7 @@ This document records the process of re-familiarisation with the codebase by rea
 
 ## Trading Calendars
 
-### Module: `mxm_refdata/trading_calendars/first_day_of_interest.py`
+### Module: `src/mxm/refdata/trading_calendars/first_day_of_interest.py`
 - **Test file**: `tests/unittests/trading_calendars/test_first_day_of_interest.py`
 
 #### Observed behaviour (from tests)
@@ -902,7 +901,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Add docstring usage example for how rules are defined in JSON and applied.
 
 
-### Module: `mxm_refdata/trading_calendars/last_trading_day.py`
+### Module: `src/mxm/refdata/trading_calendars/last_trading_day.py`
 - **Test file**: `tests/unittests/trading_calendars/test_last_trading_day.py`
 
 #### Observed behaviour (from tests)
@@ -953,7 +952,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Consider lazy loading of rules to allow dynamic configuration.
 
 
-### Module: `mxm_refdata/trading_calendars/nth_business_day.py`
+### Module: `src/mxm/refdata/trading_calendars/nth_business_day.py`
 - **Test file**: `tests/unittests/trading_calendars/test_nth_business_day_of_period.py`
 
 #### Observed behaviour (from tests)
@@ -990,7 +989,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Consider optimization for long date ranges (though not critical).
 
 
-### Module: `mxm_refdata/trading_calendars/nth_calendar_day_of_period.py`
+### Module: `src/mxm/refdata/trading_calendars/nth_calendar_day_of_period.py`
 - **Test file**: `tests/unittests/trading_calendars/test_nth_calendar_day_of_period.py`
 
 #### Observed behaviour (from tests)
@@ -1028,7 +1027,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Consider parameterized tests for all 12 months to guarantee robustness.
 
 
-### Module: `mxm_refdata/trading_calendars/nth_weekday_of_period.py`
+### Module: `src/mxm/refdata/trading_calendars/nth_weekday_of_period.py`
 - **Test file**: `tests/unittests/trading_calendars/test_nth_weekday_of_period.py`
 
 #### Observed behaviour (from tests)
@@ -1064,7 +1063,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Add integration tests with `last_trading_day.py` to confirm weekday rules resolve correctly in expiry logic.
 - Extend docstrings with examples for both forward and reverse indexing.
 
-### Module: `mxm_refdata/trading_calendars/trading_calendar.py`
+### Module: `src/mxm/refdata/trading_calendars/trading_calendar.py`
 - **Test file**: `tests/unittests/trading_calendars/test_trading_calendar.py`
 
 #### Observed behaviour (from tests)
@@ -1120,7 +1119,7 @@ This document records the process of re-familiarisation with the codebase by rea
 
 ## Utils
 
-### Module: `mxm_refdata/utils/cache_manager.py`
+### Module: `src/mxm/refdata/utils/cache_manager.py`
 - **Test file**: `tests/unittests/utils/test_cache_manager.py`
 
 #### Observed behaviour (from tests)
@@ -1165,7 +1164,7 @@ This document records the process of re-familiarisation with the codebase by rea
 - Extend docstring examples for monitoring cache contents.
 
 
-### Module: `mxm_refdata/utils/config.py`
+### Module: `src/mxm/refdata/utils/config.py`
 - **Test file**: `tests/unittests/utils/test_config.py`
 
 #### Observed behaviour (from tests)
@@ -1206,7 +1205,7 @@ This document records the process of re-familiarisation with the codebase by rea
   - Mark current module as deprecated once migration complete.
 
 
-### Module: `mxm_refdata/utils/regex_patterns.py`
+### Module: `src/mxm/refdata/utils/regex_patterns.py`
 - **Test file**: `tests/unittests/utils/test_regex_patterns.py`
 
 #### Observed behaviour (from tests)

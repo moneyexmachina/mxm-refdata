@@ -48,17 +48,20 @@ def trading_calendar():
     ],
 )
 def test_calculate_first_day_of_interest(
-    product_id, period_id, expected_first_day, trading_calendar
+    product_id: str,
+    period_id: str,
+    expected_first_day: date,
+    trading_calendar: TradingCalendar,
 ):
     """Test first_day_of_interest calculations for all test products."""
     period = PeriodFactory.get_period(period_id)
     first_day = calculate_first_day_of_interest(product_id, period, trading_calendar)
-    assert first_day == expected_first_day, (
-        f"Expected {expected_first_day}, got {first_day}"
-    )
+    assert (
+        first_day == expected_first_day
+    ), f"Expected {expected_first_day}, got {first_day}"
 
 
-def test_invalid_product_id(trading_calendar):
+def test_invalid_product_id(trading_calendar: TradingCalendar):
     """Test that ValueError is raised if the product_id is not found in the JSON file."""
     invalid_product_id = "non_existent_product"
     period = PeriodFactory.get_period(period_id="Jun-2027")
@@ -70,20 +73,22 @@ def test_invalid_product_id(trading_calendar):
         calculate_first_day_of_interest(invalid_product_id, period, trading_calendar)
 
 
-def test_invalid_period_type(trading_calendar):
+def test_invalid_period_type(trading_calendar: TradingCalendar):
     """Test that ValueError is raised if period_type is not MONTH."""
     valid_product_id = "comex_gold_futures"
 
     # Quarterly period (should raise ValueError)
     invalid_period = PeriodFactory.get_period(period_id="2027-Q2")
 
-    with pytest.raises(ValueError, match="Unsupported period_type: PeriodType.QUARTER"):
+    with pytest.raises(
+        ValueError, match=r"Unsupported period_type: PeriodType\.QUARTER"
+    ):
         calculate_first_day_of_interest(
             valid_product_id, invalid_period, trading_calendar
         )
 
 
-def test_missing_month_in_rules(trading_calendar):
+def test_missing_month_in_rules(trading_calendar: TradingCalendar):
     """Test that KeyError is raised if a contract month is missing from the JSON rules."""
     product_id = "cbot_corn_futures"
 

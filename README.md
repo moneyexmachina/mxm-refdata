@@ -57,7 +57,7 @@ The database exists to avoid regenerating tens or hundreds of thousands of contr
 
 The public entrypoint for consumers is the **read-only API**:
 
-- `mxm_refdata.api.RefDataAPI`
+- `mxm.refdata.api.RefDataAPI`
 
 It provides cached, high-level queries such as:
 - list all products
@@ -128,8 +128,8 @@ Subsequent calls reuse the existing database.
 
 The package also contains **internal services** for building and maintaining the reference database:
 
-- `mxm_refdata.services.RefDataService`
-- CLI-style scripts under `mxm_refdata/scripts/`
+- `mxm.refdata.services.RefDataService`
+- CLI-style scripts under `mxm/refdata/scripts/`
 
 These are intended for:
 - explicit initialisation

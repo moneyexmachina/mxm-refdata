@@ -1,5 +1,3 @@
-# mxm_refdata/mappings/__init__.py
-
 from mxm.refdata.mappings.futures_contract_vs_orm import (
     futures_contract_from_orm,
     futures_contract_to_orm,

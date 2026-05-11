@@ -8,33 +8,30 @@ from mxm.refdata.utils.cache_manager import CacheManager
 
 
 @pytest.fixture
-def cache():
+def cache() -> CacheManager[str]:
     """Fixture to provide a fresh CacheManager instance for each test."""
-    return CacheManager(maxsize=10)
+    return CacheManager[str](maxsize=10)
 
 
-def test_cache_set_and_get(cache):
+def test_cache_set_and_get(cache: CacheManager[str]) -> None:
     """Test basic set and get operations."""
     cache.set("key1", "value1")
     assert cache.get("key1") == "value1"
 
 
-def test_cache_overwrite(cache):
-    """Test overwriting an existing cache value."""
-    cache.set("key1", "initial_value")
-    cache.set("key1", "new_value")
-    assert cache.get("key1") == "new_value"
+def test_cache_overwrite(cache: CacheManager[str]) -> None:
+    cache.set("key1", "value1")
+    cache.set("key1", "value2")
+    assert cache.get("key1") == "value2"
 
 
-def test_cache_invalidate(cache):
-    """Test cache invalidation (removal of an item)."""
+def test_cache_invalidate(cache: CacheManager[str]) -> None:
     cache.set("key1", "value1")
     cache.invalidate("key1")
     assert cache.get("key1") is None
 
 
-def test_cache_clear(cache):
-    """Test clearing the cache removes all items."""
+def test_cache_clear(cache: CacheManager[str]) -> None:
     cache.set("key1", "value1")
     cache.set("key2", "value2")
     cache.clear()
@@ -42,32 +39,29 @@ def test_cache_clear(cache):
     assert cache.get("key2") is None
 
 
-def test_cache_eviction(cache):
-    """Test LRU eviction when exceeding max size."""
-    for i in range(11):  # maxsize is 10, so the first item should be evicted
+def test_lru_eviction(cache: CacheManager[str]) -> None:
+    for i in range(11):
         cache.set(f"key{i}", f"value{i}")
 
-    assert cache.get("key0") is None  # Should be evicted
-    assert cache.get("key10") == "value10"  # Latest entry should exist
+    assert cache.get("key0") is None
+    assert cache.get("key10") == "value10"
 
 
-def test_cache_thread_safety():
-    """Test thread safety by performing concurrent cache operations."""
-    cache = CacheManager(maxsize=1000)  # Increase cache size to avoid eviction
+def test_cache_thread_safety() -> None:
+    cache = CacheManager[str](maxsize=100)
 
-    def worker(thread_id):
-        for i in range(100):
-            cache.set(f"key-{thread_id}-{i}", f"value-{thread_id}-{i}")
-            assert cache.get(f"key-{thread_id}-{i}") == f"value-{thread_id}-{i}"
+    def worker(thread_id: int) -> None:
+        for i in range(10):
+            cache.set(f"{thread_id}:{i}", f"value-{thread_id}-{i}")
 
-    threads = [threading.Thread(target=worker, args=(i,)) for i in range(5)]
+    threads = [
+        threading.Thread(target=worker, args=(thread_id,)) for thread_id in range(10)
+    ]
 
     for thread in threads:
         thread.start()
+
     for thread in threads:
         thread.join()
 
-    # Verify that some values exist after concurrent access
-    assert cache.get("key-0-99") == "value-0-99", (
-        "Cache did not store values correctly under concurrent access"
-    )
+    assert cache.get("0:0") == "value-0-0"

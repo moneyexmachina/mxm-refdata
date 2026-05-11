@@ -1,5 +1,5 @@
 """
-mxm_refdata.mappings.period_cycles_vs_orm
+mxm.refdata.mappings.period_cycles_vs_orm
 
 ORM ↔ domain mappings for PeriodCycle and PeriodCycleMembership.
 
@@ -11,9 +11,9 @@ PeriodCycleMembership places a specific Period into a given cycle with a
 (cycle_instance, cycle_element) assignment.
 
 This module provides the pure mapping functions between:
-- ORM models in `mxm_refdata.models.orm.period_cycles`
+- ORM models in `mxm.refdata.models.orm.period_cycles`
 and
-- domain models in `mxm_refdata.models.period_cycles`
+- domain models in `mxm.refdata.models.period_cycles`
 
 Conventions
 -----------

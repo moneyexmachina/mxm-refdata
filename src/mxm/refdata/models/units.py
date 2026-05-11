@@ -1,4 +1,4 @@
-"""Physical Units for Product (and Contract) denomination."""
+"""Physical Units for Product and Contract denomination."""
 
 from enum import Enum
 
