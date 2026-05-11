@@ -48,6 +48,6 @@ data/
 **/data/
 
 # explicitly include packaged reference data inside the library
-!mxm_refdata/data/
-!mxm_refdata/data/**
+!src/mxm/refdata/data/
+!src/mxm/refdata/data/**
 

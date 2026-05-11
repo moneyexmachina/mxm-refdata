@@ -1,0 +1,34 @@
+{
+    "comex_gold_futures": {
+        "period_offset": 0,
+        "reference_event": "business_day_of_period",
+        "n_reference": -3,
+        "business_day_offset": 0
+    },
+    "cbot_corn_futures": {
+        "period_offset": 0,
+        "reference_event": "calendar_day_of_period",
+        "n_reference": 15,
+        "business_day_offset": -1
+    },
+    "cme_gbp_futures": {
+        "period_offset": 0,
+        "reference_event": "weekday_of_period",
+        "n_reference": 3,
+        "weekday": "Wednesday",
+        "business_day_offset": -2
+    },
+    "cme_emini_snp500_futures": {
+        "period_offset": 0,
+        "reference_event": "weekday_of_period",
+        "n_reference": 3,
+        "weekday": "Friday",
+        "business_day_offset": 0
+    },
+    "nymex_natural_gas_futures": {
+        "period_offset": -1,
+        "reference_event": "business_day_of_period",
+        "n_reference": -3,
+        "business_day_offset": 0
+    }
+}

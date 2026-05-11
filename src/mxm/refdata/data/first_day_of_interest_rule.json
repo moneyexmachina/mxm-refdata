@@ -1,0 +1,88 @@
+{
+    "comex_gold_futures": {
+      "shift_rule": {
+        "shift_period_type": "MONTH",
+        "n_shift": {
+          "Jan": 72,
+          "Feb": 24,
+          "Mar": 24,
+          "Apr": 24,
+          "May": 24,
+          "Jun": 72,
+          "Jul": 24,
+          "Aug": 24,
+          "Sep": 24,
+          "Oct": 24,
+          "Nov": 24,
+          "Dec": 72
+        }
+      },
+      "reference_rule": "next_b_day_after_period"
+    },
+    "cbot_corn_futures": {
+      "shift_rule": {
+        "shift_period_type": "MONTH",
+        "n_shift": {
+          "Mar": 36,
+          "May": 36,
+          "Sep": 36,
+          "Jul": 48,
+          "Dec": 48
+        }
+      },
+      "reference_rule": "next_b_day_after_last_trading_day_of_december"
+    },
+    "cme_gbp_futures": {
+      "shift_rule": {
+        "shift_period_type": "MONTH",
+        "n_shift": {
+          "Mar": 60,
+          "Jun": 60,
+          "Sep": 60,
+          "Dec": 60,
+          "Jan": 3,
+          "Feb": 3,
+          "Apr": 3,
+          "May": 3,
+          "Jul": 3,
+          "Aug": 3,
+          "Oct": 3,
+          "Nov": 3
+        }
+      },
+      "reference_rule": "next_b_day_after_period"
+    },
+    "cme_emini_snp500_futures": {
+      "shift_rule": {
+        "shift_period_type": "MONTH",
+        "n_shift": {
+          "Mar": 63,
+          "Jun": 63,
+          "Sep": 63,
+          "Dec": 63
+        }
+      },
+      "reference_rule": "next_b_day_after_period"
+    },
+    "nymex_natural_gas_futures": {
+      "shift_rule": {
+        "shift_period_type": "MONTH",
+        "n_shift": {
+          "Jan": 144,
+          "Feb": 144,
+          "Mar": 144,
+          "Apr": 144,
+          "May": 144,
+          "Jun": 144,
+          "Jul": 144,
+          "Aug": 144,
+          "Sep": 144,
+          "Oct": 144,
+          "Nov": 144,
+          "Dec": 144
+        }
+      },
+      "reference_rule": "next_b_day_after_last_trading_day_of_december"
+    }
+  }
+  
