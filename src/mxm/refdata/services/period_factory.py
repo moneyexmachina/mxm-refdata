@@ -30,7 +30,7 @@ class PeriodFactory:
     """Factory class to manage the creation of Period objects with flyweight pattern."""
 
     _instance = None  # Singleton instance
-    _period_cache: ClassVar[dict] = {}  # Dictionary to store unique Period objects
+    _period_cache: ClassVar[dict[str, Period]] = {}
     _lock = threading.Lock()  # Lock for thread safety
 
     date_to_period_id_map: Mapping[PeriodType, Callable[[date], str]] = (
@@ -52,40 +52,52 @@ class PeriodFactory:
         return cls._instance
 
     @classmethod
+    def get_period_by_id(cls, period_id: str) -> Period:
+        """Get a Period object by canonical period_id."""
+        if period_id not in cls._period_cache:
+            period_type = cls._period_type_from_period_id(period_id)
+            first_day, last_day = cls.calculate_period_dates(period_id, period_type)
+            cls._period_cache[period_id] = Period(
+                period_id=period_id,
+                period_type=period_type,
+                first_date=first_day,
+                last_date=last_day,
+            )
+
+        return cls._period_cache[period_id]
+
+    @classmethod
+    def get_period_by_date(
+        cls,
+        date_obj: date,
+        period_type: PeriodType,
+    ) -> Period:
+        """Get a Period object containing a date for the given period type."""
+        period = cls._create_from_date(date_obj, period_type)
+
+        if period.period_id not in cls._period_cache:
+            cls._period_cache[period.period_id] = period
+
+        return cls._period_cache[period.period_id]
+
+    @classmethod
     def get_period(
         cls,
         period_id: str | None = None,
         date_obj: date | None = None,
         period_type: PeriodType | None = None,
     ) -> Period:
-        """Get a Period object either by period_id or by date and period_type."""
-        if period_id:
-            if period_id not in cls._period_cache:
-                period_type = cls._period_type_from_period_id(period_id)
-                first_day, last_day = cls.calculate_period_dates(period_id, period_type)
-                period = Period(
-                    period_id=period_id,
-                    period_type=period_type,
-                    first_date=first_day,
-                    last_date=last_day,
-                )
-                cls._period_cache[period_id] = period
+        """Get a Period object by id or by date and period type.
 
-        elif date_obj and period_type:
-            if not isinstance(date_obj, date):
-                message = "date_obj must be a date object (not a datetime object)"
-                raise ValueError(message)
+        Prefer get_period_by_id or get_period_by_date in new code.
+        """
+        if period_id is not None:
+            return cls.get_period_by_id(period_id)
 
-            period = cls._create_from_date(date_obj, period_type)
-            period_id = period.period_id
-            if period_id not in cls._period_cache:
-                cls._period_cache[period_id] = period
+        if date_obj is not None and period_type is not None:
+            return cls.get_period_by_date(date_obj, period_type)
 
-        else:
-            message = "Must provide either period_id or date_obj with period_type"
-            raise ValueError(message)
-
-        return cls._period_cache[period_id]
+        raise ValueError("Must provide either period_id or date_obj with period_type")
 
     @classmethod
     def _period_type_from_period_id(cls, period_id: str) -> PeriodType:
@@ -188,7 +200,7 @@ class PeriodFactory:
         Returns:
             list[Period]: A list of Period objects representing the next n periods.
         """
-        periods = []
+        periods: list[Period] = []
 
         # Handle the current period
         if handle_current_period == HandleCurrentPeriod.INCLUDE:
@@ -285,7 +297,7 @@ class PeriodFactory:
             message = "start_date must be earlier than end_date"
             raise ValueError(message)
 
-        periods = []
+        periods: list[Period] = []
         current_date = start_date
 
         while current_date <= end_date:

@@ -1,7 +1,9 @@
 import datetime
+from typing import cast
 
 import exchange_calendars as xcals
 import pandas as pd
+from exchange_calendars.errors import InvalidCalendarName
 
 
 class TradingCalendar:
@@ -36,7 +38,7 @@ class TradingCalendar:
             else:
                 self.calendar = xcals.get_calendar(calendar_name)
 
-        except xcals.errors.InvalidCalendarName as e:
+        except InvalidCalendarName as e:
             raise ValueError(f"Unknown trading calendar: {calendar_name}") from e
 
     def get_sessions_in_range(
@@ -105,7 +107,7 @@ class TradingCalendar:
         Returns:
             pd.Timestamp: The market open time for the session (UTC).
         """
-        return self.calendar.schedule.loc[session, "open"]
+        return cast(pd.Timestamp, self.calendar.schedule.loc[session, "open"])
 
     def get_session_close(self, session: pd.Timestamp) -> pd.Timestamp:
         """
@@ -117,7 +119,7 @@ class TradingCalendar:
         Returns:
             pd.Timestamp: The market close time for the session (UTC).
         """
-        return self.calendar.schedule.loc[session, "close"]
+        return cast(pd.Timestamp, self.calendar.schedule.loc[session, "close"])
 
     def is_trading_day(self, date: datetime.date) -> bool:
         """

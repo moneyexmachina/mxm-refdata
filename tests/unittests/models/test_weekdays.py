@@ -36,7 +36,12 @@ from mxm.refdata.models.weekdays import Weekday
         ("sun", 6, "Sunday", "Sun"),
     ],
 )
-def test_weekday_parsing(input_value, expected_int, expected_str, expected_abbr):
+def test_weekday_parsing(
+    input_value: int | str,
+    expected_int: int,
+    expected_str: str,
+    expected_abbr: str,
+):
     """Test that Weekday correctly parses integers, full names, and abbreviations."""
     weekday = (
         Weekday.from_str(input_value)

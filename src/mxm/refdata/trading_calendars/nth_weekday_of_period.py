@@ -2,6 +2,8 @@
 
 import datetime
 
+import pandas as pd
+
 from mxm.refdata.models.periods import Period
 from mxm.refdata.models.weekdays import Weekday
 
@@ -33,7 +35,7 @@ def get_nth_weekday_of_period(
         weekday = Weekday.from_str(weekday).as_int
     period_range = period.to_daterange()
     # Get all dates in the period and filter for matching weekdays
-    dates: list[datetime.date] = [
+    dates: list[pd.Timestamp] = [
         date for date in period_range if date.weekday() == weekday
     ]
 

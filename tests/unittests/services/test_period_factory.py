@@ -14,24 +14,33 @@ def factory() -> PeriodFactory:
     return PeriodFactory()
 
 
-def test_get_period_by_period_id(factory: PeriodFactory):
+def test_get_period_by_id(factory: PeriodFactory) -> None:
     """Test getting a Period object by period_id."""
-    period = factory.get_period(period_id="2024-Q1")
+    period = factory.get_period_by_id("2024-Q1")
+
     assert period.period_id == "2024-Q1"
     assert period.period_type == PeriodType.QUARTER
     assert period.first_date == date(2024, 1, 1)
     assert period.last_date == date(2024, 3, 31)
 
 
-def test_get_period_by_date_and_type(factory: PeriodFactory):
+def test_get_period_by_date(factory: PeriodFactory) -> None:
     """Test getting a Period object by date and type."""
-    period = factory.get_period(
-        date_obj=date(2024, 2, 15), period_type=PeriodType.MONTH
+    period = factory.get_period_by_date(
+        date_obj=date(2024, 2, 15),
+        period_type=PeriodType.MONTH,
     )
+
     assert period.period_id == "Feb-2024"
     assert period.period_type == PeriodType.MONTH
     assert period.first_date == date(2024, 2, 1)
-    assert period.last_date == date(2024, 2, 29)  # Leap year
+    assert period.last_date == date(2024, 2, 29)
+
+
+def test_get_period_dispatches_by_period_id(factory: PeriodFactory) -> None:
+    period = factory.get_period(period_id="2024-Q1")
+
+    assert period == factory.get_period_by_id("2024-Q1")
 
 
 def test_cache_behavior(factory: PeriodFactory):

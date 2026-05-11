@@ -1,6 +1,7 @@
 """Focused unit tests for RefDataAPI (ensuring query correctness & caching)."""
 
 from datetime import date
+from pathlib import Path
 
 import pytest
 from pytest import MonkeyPatch
@@ -37,6 +38,12 @@ def reset_db(db_session_manager: SQLSessionManager):
     db_session_manager.init_db()
 
 
+def _mock_ensure_refdata_ready(*_args: object, **_kwargs: object) -> None:
+    _ = _args
+    _ = _kwargs
+    return None
+
+
 @pytest.fixture
 def ref_data_api(db_session_manager: SQLSessionManager, monkeypatch: MonkeyPatch):
     """
@@ -50,14 +57,14 @@ def ref_data_api(db_session_manager: SQLSessionManager, monkeypatch: MonkeyPatch
     # This patch is intentionally scoped to tests using this fixture.
     monkeypatch.setattr(
         "mxm.refdata.api.ref_data_api.ensure_refdata_ready",
-        lambda *_args, **_kwargs: None,
+        _mock_ensure_refdata_ready,
         raising=False,
     )
     return RefDataAPI(session_manager=db_session_manager)
 
 
 @pytest.fixture
-def mock_data(db_session_manager: SQLSessionManager):
+def mock_data(db_session_manager: SQLSessionManager) -> None:
     """Pre-populates the database with business model objects, ensuring conversion is tested."""
     with db_session_manager.db_session_scope() as session:
         product = FuturesProduct(
@@ -92,8 +99,8 @@ def mock_data(db_session_manager: SQLSessionManager):
             period_id="Jan-2025",
             contract_id="gold_fut.Jan-2025",
             contract_size=100.0,
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             trading_calendar="Default Calendar",
             first_day_of_interest=date(2025, 1, 1),
             last_trading_day=date(2025, 1, 29),
@@ -101,21 +108,24 @@ def mock_data(db_session_manager: SQLSessionManager):
         session.add(futures_contract_to_orm(contract))
 
 
-def test_get_product_by_id(ref_data_api: RefDataAPI, mock_data):
+@pytest.mark.usefixtures("mock_data")
+def test_get_product_by_id(ref_data_api: RefDataAPI):
     """Test retrieving a product by ID."""
     product = ref_data_api.get_product_by_id("gold_fut")
     assert product is not None, "Expected product to be found."
     assert product.product_id == "gold_fut", "Product ID mismatch."
 
 
-def test_get_contracts_for_date(ref_data_api: RefDataAPI, mock_data):
+@pytest.mark.usefixtures("mock_data")
+def test_get_contracts_for_date(ref_data_api: RefDataAPI):
     """Test retrieving contracts active during their delivery period."""
     contracts = ref_data_api.get_contracts_for_date(date(2025, 1, 15))
     assert len(contracts) == 1, "Expected 1 active contract on this date."
     assert contracts[0].contract_id == "gold_fut.Jan-2025", "Contract ID mismatch."
 
 
-def test_caching_behavior(ref_data_api: RefDataAPI, mock_data, mocker: MockerFixture):
+@pytest.mark.usefixtures("mock_data")
+def test_caching_behavior(ref_data_api: RefDataAPI, mocker: MockerFixture):
     """Test that caching prevents redundant DB queries."""
     spy = mocker.spy(ref_data_api.session_manager, "db_session_scope")
 
@@ -133,7 +143,7 @@ def test_caching_behavior(ref_data_api: RefDataAPI, mock_data, mocker: MockerFix
 # -------------------------------------------------------------------------
 
 
-def test_auto_bootstrap_buildable(tmp_path, monkeypatch):
+def test_auto_bootstrap_buildable(tmp_path: Path, monkeypatch: MonkeyPatch):
     """
     In buildable mode, RefDataAPI should materialise the refdata DB on first use
     when it is missing/empty.
@@ -149,7 +159,7 @@ def test_auto_bootstrap_buildable(tmp_path, monkeypatch):
     assert db_path.exists(), "Expected SQLite DB file to be created."
 
 
-def test_auto_bootstrap_refused_managed(tmp_path, monkeypatch):
+def test_auto_bootstrap_refused_managed(tmp_path: Path, monkeypatch: MonkeyPatch):
     """
     In managed mode, RefDataAPI must refuse to auto-create an empty/missing DB.
     """
@@ -171,7 +181,7 @@ def test_auto_bootstrap_refused_managed(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def mock_data_active_contracts(db_session_manager: SQLSessionManager):
+def mock_data_active_contracts(db_session_manager: SQLSessionManager) -> None:
     """
     Pre-populates the database with:
       - 2 products
@@ -241,8 +251,8 @@ def mock_data_active_contracts(db_session_manager: SQLSessionManager):
             period_id="Jan-2025",
             contract_id="gold_fut.Jan-2025",
             contract_size=100.0,
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             trading_calendar="Default Calendar",
             first_day_of_interest=date(2025, 1, 1),
             last_trading_day=date(2025, 1, 29),
@@ -253,8 +263,8 @@ def mock_data_active_contracts(db_session_manager: SQLSessionManager):
             period_id="Feb-2025",
             contract_id="gold_fut.Feb-2025",
             contract_size=100.0,
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             trading_calendar="Default Calendar",
             first_day_of_interest=date(2025, 1, 30),
             last_trading_day=date(2025, 2, 26),
@@ -267,8 +277,8 @@ def mock_data_active_contracts(db_session_manager: SQLSessionManager):
             period_id="Jan-2025",
             contract_id="corn_fut.Jan-2025",
             contract_size=5000.0,
-            currency="USD",
-            unit="BUSHEL",
+            currency=Currency.USD,
+            unit=ProductUnit.BUSHEL,
             trading_calendar="Default Calendar",
             first_day_of_interest=date(2025, 1, 10),
             last_trading_day=date(2025, 1, 20),
@@ -279,8 +289,8 @@ def mock_data_active_contracts(db_session_manager: SQLSessionManager):
             period_id="Feb-2025",
             contract_id="corn_fut.Feb-2025",
             contract_size=5000.0,
-            currency="USD",
-            unit="BUSHEL",
+            currency=Currency.USD,
+            unit=ProductUnit.BUSHEL,
             trading_calendar="Default Calendar",
             first_day_of_interest=date(2025, 2, 1),
             last_trading_day=date(2025, 2, 10),
@@ -292,9 +302,8 @@ def mock_data_active_contracts(db_session_manager: SQLSessionManager):
         session.add(futures_contract_to_orm(corn_feb))
 
 
-def test_get_active_contracts_semantics_and_boundaries(
-    ref_data_api: RefDataAPI, mock_data_active_contracts
-):
+@pytest.mark.usefixtures("mock_data_active_contracts")
+def test_get_active_contracts_semantics_and_boundaries(ref_data_api: RefDataAPI):
     """
     Active is defined as: first_day_of_interest <= as_of_date <= last_trading_day.
     Verify inside-window and boundary inclusion, plus outside-window exclusion.
@@ -317,9 +326,8 @@ def test_get_active_contracts_semantics_and_boundaries(
     assert [x.contract_id for x in c] == ["corn_fut.Jan-2025"]
 
 
-def test_get_active_contracts_product_id_filter(
-    ref_data_api: RefDataAPI, mock_data_active_contracts
-):
+@pytest.mark.usefixtures("mock_data_active_contracts")
+def test_get_active_contracts_product_id_filter(ref_data_api: RefDataAPI):
     """Restricting by product_id should only return contracts from that product."""
     contracts = ref_data_api.get_active_contracts(
         date(2025, 1, 15), product_id="gold_fut"
@@ -328,9 +336,8 @@ def test_get_active_contracts_product_id_filter(
     assert [c.contract_id for c in contracts] == ["gold_fut.Jan-2025"]
 
 
-def test_get_active_contracts_product_ids_filter(
-    ref_data_api: RefDataAPI, mock_data_active_contracts
-):
+@pytest.mark.usefixtures("mock_data_active_contracts")
+def test_get_active_contracts_product_ids_filter(ref_data_api: RefDataAPI):
     """Restricting by product_ids should return active contracts across those products."""
     contracts = ref_data_api.get_active_contracts(
         date(2025, 1, 15),
@@ -343,16 +350,18 @@ def test_get_active_contracts_product_ids_filter(
     ]
 
 
-def test_get_active_contracts_empty_product_ids_returns_empty(
-    ref_data_api: RefDataAPI, mock_data_active_contracts
-):
+@pytest.mark.usefixtures("mock_data_active_contracts")
+def test_get_active_contracts_empty_product_ids_returns_empty(ref_data_api: RefDataAPI):
     """An explicitly empty product_ids list should return an empty list."""
     contracts = ref_data_api.get_active_contracts(date(2025, 1, 15), product_ids=[])
     assert contracts == []
 
 
+pytest.mark.usefixtures("mock_data_active_contracts")
+
+
 def test_get_active_contracts_rejects_both_product_id_and_product_ids(
-    ref_data_api: RefDataAPI, mock_data_active_contracts
+    ref_data_api: RefDataAPI,
 ):
     """Providing both product_id and product_ids must raise ValueError."""
     with pytest.raises(ValueError):
@@ -363,8 +372,9 @@ def test_get_active_contracts_rejects_both_product_id_and_product_ids(
         )
 
 
+@pytest.mark.usefixtures("mock_data_active_contracts")
 def test_get_active_contracts_caching_behavior(
-    ref_data_api: RefDataAPI, mock_data_active_contracts, mocker: MockerFixture
+    ref_data_api: RefDataAPI, mocker: MockerFixture
 ):
     """Caching should prevent redundant DB queries for identical get_active_contracts calls."""
     spy = mocker.spy(ref_data_api.session_manager, "db_session_scope")
@@ -431,8 +441,8 @@ def test_get_contracts_for_product_orders_by_period(
             period_id="Jan-2025",
             contract_id="mix_tenor_fut.Jan-2025",
             contract_size=1.0,
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             trading_calendar="Default Calendar",
             first_day_of_interest=date(2024, 12, 1),
             last_trading_day=date(2025, 1, 30),
@@ -442,8 +452,8 @@ def test_get_contracts_for_product_orders_by_period(
             period_id="2025",
             contract_id="mix_tenor_fut.2025",
             contract_size=1.0,
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             trading_calendar="Default Calendar",
             first_day_of_interest=date(2024, 1, 1),
             last_trading_day=date(2025, 12, 15),
@@ -458,14 +468,16 @@ def test_get_contracts_for_product_orders_by_period(
     ]
 
 
-def test_get_contract_by_id_found(ref_data_api: RefDataAPI, mock_data):
+@pytest.mark.usefixtures("mock_data")
+def test_get_contract_by_id_found(ref_data_api: RefDataAPI):
     """get_contract_by_id should return the contract when it exists."""
     contract = ref_data_api.get_contract_by_id("gold_fut.Jan-2025")
     assert contract is not None, "Expected contract to be found."
     assert contract.contract_id == "gold_fut.Jan-2025", "Contract ID mismatch."
 
 
-def test_get_contract_by_id_missing(ref_data_api: RefDataAPI, mock_data):
+@pytest.mark.usefixtures("mock_data")
+def test_get_contract_by_id_missing(ref_data_api: RefDataAPI):
     """get_contract_by_id should return None when the contract does not exist."""
     contract = ref_data_api.get_contract_by_id("does_not_exist")
     assert contract is None, "Expected None for missing contract."
@@ -514,8 +526,8 @@ def test_get_contracts_by_id_preserves_order_and_ignores_missing(
             period_id="Jan-2025",
             contract_id="lookup_fut.A",
             contract_size=1.0,
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             trading_calendar="Default Calendar",
             first_day_of_interest=date(2025, 1, 1),
             last_trading_day=date(2025, 1, 29),
@@ -525,8 +537,8 @@ def test_get_contracts_by_id_preserves_order_and_ignores_missing(
             period_id="Jan-2025",
             contract_id="lookup_fut.B",
             contract_size=1.0,
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             trading_calendar="Default Calendar",
             first_day_of_interest=date(2025, 1, 2),
             last_trading_day=date(2025, 1, 30),
@@ -544,17 +556,15 @@ def test_get_contracts_by_id_preserves_order_and_ignores_missing(
     ]
 
 
-def test_get_contracts_by_id_empty_list_returns_empty(
-    ref_data_api: RefDataAPI, mock_data
-):
+@pytest.mark.usefixtures("mock_data")
+def test_get_contracts_by_id_empty_list_returns_empty(ref_data_api: RefDataAPI):
     """get_contracts_by_id should return [] when given an empty input list."""
     assert ref_data_api.get_contracts_by_id([]) == []
 
 
+@pytest.mark.usefixtures("mock_data")
 def test_get_contract_by_id_caching_behavior(
-    ref_data_api: RefDataAPI,
-    mock_data,
-    mocker: MockerFixture,
+    ref_data_api: RefDataAPI, mocker: MockerFixture
 ):
     """Caching should prevent redundant DB queries for identical get_contract_by_id calls."""
     spy = mocker.spy(ref_data_api.session_manager, "db_session_scope")
@@ -605,8 +615,8 @@ def test_get_contracts_by_id_caching_behavior(
             period_id="Jan-2025",
             contract_id="lookup_cache_fut.A",
             contract_size=1.0,
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             trading_calendar="Default Calendar",
             first_day_of_interest=date(2025, 1, 1),
             last_trading_day=date(2025, 1, 29),

@@ -42,16 +42,10 @@ class FuturesContractFactory:
         Returns:
             list[FuturesContract]: A list of valid FuturesContract objects.
         """
-        contracts = []
-
-        period_types = (
-            product.period_types
-            if isinstance(product.period_types, (list, tuple, set))
-            else [product.period_types]
-        )
+        contracts: list[FuturesContract] = []
 
         for period in available_periods.values():
-            if period.period_type not in period_types:
+            if period.period_type not in product.period_types:
                 continue  # Skip periods that don't match product requirements
 
             if self._is_valid_period(product, period):

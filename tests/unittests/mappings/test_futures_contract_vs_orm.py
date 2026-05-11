@@ -1,5 +1,7 @@
 """Unit-tests for mapping FuturesContract to and from ORM."""
 
+import datetime
+
 import pytest
 
 from mxm.refdata.mappings.futures_contract_vs_orm import (
@@ -23,18 +25,18 @@ def futures_contract():
         currency=Currency.USD,
         unit=ProductUnit.TROY_OUNCE,
         trading_calendar="CME Default",
-        first_day_of_interest="2024-12-01",
-        last_trading_day="2024-12-31",
+        first_day_of_interest=datetime.date(2024, 12, 1),
+        last_trading_day=datetime.date(2024, 12, 31),
     )
 
 
-def test_futures_contract_to_orm(futures_contract):
+def test_futures_contract_to_orm(futures_contract: FuturesContract):
     """Test mapping FuturesContract to ORM."""
     orm_instance = futures_contract_to_orm(futures_contract)
 
-    assert isinstance(
-        orm_instance, FuturesContractORM
-    ), "Mapping should return an ORM instance."
+    assert isinstance(orm_instance, FuturesContractORM), (
+        "Mapping should return an ORM instance."
+    )
     assert orm_instance.contract_id == futures_contract.contract_id
     assert orm_instance.product_id == futures_contract.product_id
     assert orm_instance.period_id == futures_contract.period_id
@@ -46,7 +48,7 @@ def test_futures_contract_to_orm(futures_contract):
     assert orm_instance.last_trading_day == futures_contract.last_trading_day
 
 
-def test_futures_contract_from_orm(futures_contract):
+def test_futures_contract_from_orm(futures_contract: FuturesContract):
     """Test mapping ORM to FuturesContract."""
     # Create ORM instance
     contract_orm = FuturesContractORM(
@@ -64,9 +66,9 @@ def test_futures_contract_from_orm(futures_contract):
     # Map back to internal FuturesContract
     contract = futures_contract_from_orm(contract_orm)
 
-    assert isinstance(
-        contract, FuturesContract
-    ), "Mapping should return a FuturesContract instance."
+    assert isinstance(contract, FuturesContract), (
+        "Mapping should return a FuturesContract instance."
+    )
     assert contract.contract_id == contract_orm.contract_id
     assert contract.product_id == contract_orm.product_id
     assert contract.period_id == contract_orm.period_id
@@ -78,12 +80,12 @@ def test_futures_contract_from_orm(futures_contract):
     assert contract.last_trading_day == contract_orm.last_trading_day
 
 
-def test_futures_contract_round_trip(futures_contract):
+def test_futures_contract_round_trip(futures_contract: FuturesContract):
     """Test round-trip mapping between FuturesContract and ORM."""
     # Map to ORM and back to internal
     orm_instance = futures_contract_to_orm(futures_contract)
     contract = futures_contract_from_orm(orm_instance)
 
-    assert (
-        contract == futures_contract
-    ), "Round-trip mapping should preserve the contract."
+    assert contract == futures_contract, (
+        "Round-trip mapping should preserve the contract."
+    )
