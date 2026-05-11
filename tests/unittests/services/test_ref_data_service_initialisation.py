@@ -92,9 +92,9 @@ def test_initialise_periods(
         period_data = [(p.period_id, p.period_type) for p in periods]
 
     assert len(period_data) > 0, "Expected periods to be initialized in the database."
-    assert any(ptype == PeriodType.MONTH for _, ptype in period_data), (
-        "Expected monthly periods."
-    )
+    assert any(
+        ptype == PeriodType.MONTH for _, ptype in period_data
+    ), "Expected monthly periods."
 
 
 def test_initialise_futures_products(

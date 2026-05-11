@@ -34,9 +34,9 @@ def test_futures_contract_to_orm(futures_contract: FuturesContract):
     """Test mapping FuturesContract to ORM."""
     orm_instance = futures_contract_to_orm(futures_contract)
 
-    assert isinstance(orm_instance, FuturesContractORM), (
-        "Mapping should return an ORM instance."
-    )
+    assert isinstance(
+        orm_instance, FuturesContractORM
+    ), "Mapping should return an ORM instance."
     assert orm_instance.contract_id == futures_contract.contract_id
     assert orm_instance.product_id == futures_contract.product_id
     assert orm_instance.period_id == futures_contract.period_id
@@ -66,9 +66,9 @@ def test_futures_contract_from_orm(futures_contract: FuturesContract):
     # Map back to internal FuturesContract
     contract = futures_contract_from_orm(contract_orm)
 
-    assert isinstance(contract, FuturesContract), (
-        "Mapping should return a FuturesContract instance."
-    )
+    assert isinstance(
+        contract, FuturesContract
+    ), "Mapping should return a FuturesContract instance."
     assert contract.contract_id == contract_orm.contract_id
     assert contract.product_id == contract_orm.product_id
     assert contract.period_id == contract_orm.period_id
@@ -86,6 +86,6 @@ def test_futures_contract_round_trip(futures_contract: FuturesContract):
     orm_instance = futures_contract_to_orm(futures_contract)
     contract = futures_contract_from_orm(orm_instance)
 
-    assert contract == futures_contract, (
-        "Round-trip mapping should preserve the contract."
-    )
+    assert (
+        contract == futures_contract
+    ), "Round-trip mapping should preserve the contract."
