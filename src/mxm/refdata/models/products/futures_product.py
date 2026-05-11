@@ -1,20 +1,11 @@
 """DataClass for a futures product."""
 
 from dataclasses import dataclass
-from enum import Enum
 
 from mxm.refdata.models.currencies import Currency
 from mxm.refdata.models.periods import PeriodType
+from mxm.refdata.models.products.settlement import SettlementMethod
 from mxm.refdata.models.units import ProductUnit
-
-
-class SettlementMethod(Enum):
-    """Settlement methods for FuturesProducts."""
-
-    PHYSICAL = "physical"
-    FINANCIAL = "financial"
-    CASH = "cash"
-    OTHER = "other"
 
 
 @dataclass(frozen=True)

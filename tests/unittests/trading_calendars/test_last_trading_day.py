@@ -46,13 +46,18 @@ def trading_calendar():
         ),  # 3rd Friday (if not business day, move back)
     ],
 )
-def test_calculate_last_trading_day(product_id, period_id, expected, trading_calendar):
+def test_calculate_last_trading_day(
+    product_id: str,
+    period_id: str,
+    expected: datetime.date,
+    trading_calendar: TradingCalendar,
+):
     """Test calculating the last trading day based on different rule types."""
     period = PeriodFactory.get_period(period_id=period_id)
     assert calculate_last_trading_day(product_id, period, trading_calendar) == expected
 
 
-def test_missing_trading_rule(trading_calendar):
+def test_missing_trading_rule(trading_calendar: TradingCalendar):
     """Test error handling when product_id is missing from trading rules."""
     period = PeriodFactory.get_period(period_id="Jun-2025")
     with pytest.raises(KeyError):

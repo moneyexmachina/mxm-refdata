@@ -32,13 +32,15 @@ def trading_calendar():
         ("2025-Q3", -10, datetime.date(2025, 9, 17)),  # Tenth-last business day
     ],
 )
-def test_get_nth_business_day_of_period(period_id, n, expected, trading_calendar):
+def test_get_nth_business_day_of_period(
+    period_id: str, n: int, expected: datetime.date, trading_calendar: TradingCalendar
+):
     """Test retrieving the N-th business day of a period."""
     period = PeriodFactory.get_period(period_id=period_id)
     assert get_nth_business_day_of_period(period, n, trading_calendar) == expected
 
 
-def test_invalid_n(trading_calendar):
+def test_invalid_n(trading_calendar: TradingCalendar):
     """Test that out-of-range N values raise a ValueError."""
     period = PeriodFactory.get_period(period_id="Jun-2025")
     with pytest.raises(ValueError):

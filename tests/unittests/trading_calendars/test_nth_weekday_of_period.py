@@ -63,7 +63,9 @@ from mxm.refdata.trading_calendars.nth_weekday_of_period import (
         ),  # Last Friday of Q3: Sep 26
     ],
 )
-def test_get_nth_weekday_of_period(period_id, weekday, n, expected):
+def test_get_nth_weekday_of_period(
+    period_id: str, weekday: str, n: int, expected: datetime.date
+):
     """Test retrieving the N-th occurrence of a given weekday in a period."""
     period = PeriodFactory.get_period(period_id=period_id)
     assert get_nth_weekday_of_period(period, weekday, n) == expected

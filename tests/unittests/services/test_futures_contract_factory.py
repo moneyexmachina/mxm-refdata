@@ -1,5 +1,6 @@
 """Unit tests for FuturesContractFactory's create_contracts_for_product method."""
 
+from collections.abc import Iterator
 from datetime import date
 from unittest.mock import patch
 
@@ -13,13 +14,13 @@ from mxm.refdata.services.futures_contract_factory import FuturesContractFactory
 
 
 @pytest.fixture
-def contract_factory():
+def contract_factory() -> FuturesContractFactory:
     """Fixture to create a FuturesContractFactory instance."""
     return FuturesContractFactory()
 
 
 @pytest.fixture
-def mock_periods():
+def mock_periods() -> dict[str, Period]:
     """Fixture to generate a dictionary of periods (id -> Period object) for a given year."""
     periods = {
         f"{date(2024, month, 1).strftime('%b-%Y')}": Period(
@@ -34,7 +35,7 @@ def mock_periods():
 
 
 @pytest.fixture
-def all_months_product():
+def all_months_product() -> FuturesProduct:
     """Fixture for a product where contracts are listed for all months."""
     return FuturesProduct(
         product_id="ALL_MONTHS",
@@ -44,7 +45,7 @@ def all_months_product():
         currency=Currency.USD,
         contract_size=100,
         listing_rule="All monthly contracts listed",
-        period_types=PeriodType.MONTH,
+        period_types=(PeriodType.MONTH,),
         settlement=SettlementMethod.PHYSICAL,
         last_trading_rule="3rd last business day of the delivery month",
         expiry_rule="Last trading day of the month",
@@ -56,7 +57,7 @@ def all_months_product():
 
 
 @pytest.fixture
-def partial_months_product():
+def partial_months_product() -> FuturesProduct:
     """Fixture for a product that only has contracts for Feb, Apr, Jul, Dec."""
     return FuturesProduct(
         product_id="PARTIAL_MONTHS",
@@ -66,19 +67,19 @@ def partial_months_product():
         currency=Currency.USD,
         contract_size=100,
         listing_rule="Limited monthly contracts listed",
-        period_types=PeriodType.MONTH,
+        period_types=(PeriodType.MONTH,),
         settlement=SettlementMethod.PHYSICAL,
         last_trading_rule="3rd last business day of the delivery month",
         expiry_rule="Last trading day of the month",
         trading_calendar="CME",
         tick_size=0.1,
         tick_value=10.0,
-        valid_period_rule="GJNV",  # Feb, Apr, Jul, Oct
+        valid_period_rule="GJNV",  # Feb, Apr, Jul, Nov
     )
 
 
 @pytest.fixture
-def quarterly_product():
+def quarterly_product() -> FuturesProduct:
     """Fixture for a product with contracts only in March, June, Sep, Dec."""
     return FuturesProduct(
         product_id="QUARTERLY",
@@ -88,7 +89,7 @@ def quarterly_product():
         currency=Currency.USD,
         contract_size=100,
         listing_rule="Quarterly contracts listed",
-        period_types=PeriodType.MONTH,
+        period_types=(PeriodType.MONTH,),
         settlement=SettlementMethod.PHYSICAL,
         last_trading_rule="3rd last business day of the delivery month",
         expiry_rule="Last trading day of the month",
@@ -99,8 +100,12 @@ def quarterly_product():
     )
 
 
+type TradingRule = dict[str, int | str]
+type TradingRules = dict[str, TradingRule]
+
+
 @pytest.fixture
-def mock_trading_rules():
+def mock_trading_rules() -> TradingRules:
     """Mock trading rules for test products."""
     return {
         "ALL_MONTHS": {
@@ -125,8 +130,26 @@ def mock_trading_rules():
     }
 
 
+type MonthShiftMap = dict[str, int]
+
+type ShiftRule = dict[
+    str,
+    str | MonthShiftMap,
+]
+
+type FirstDayOfInterestRule = dict[
+    str,
+    str | ShiftRule,
+]
+
+type FirstDayOfInterestRules = dict[
+    str,
+    FirstDayOfInterestRule,
+]
+
+
 @pytest.fixture
-def mock_first_day_of_interest_rules():
+def mock_first_day_of_interest_rules() -> FirstDayOfInterestRules:
     """Mock first_day_of_interest rules for test products."""
     return {
         "ALL_MONTHS": {
@@ -186,7 +209,7 @@ def mock_first_day_of_interest_rules():
 
 
 @pytest.fixture
-def patched_trading_rules(mock_trading_rules):
+def patched_trading_rules(mock_trading_rules: TradingRules) -> Iterator[None]:
     """Patch TRADING_RULES so test products have valid trading rules."""
     with patch(
         "mxm.refdata.trading_calendars.last_trading_day.TRADING_RULES",
@@ -196,7 +219,9 @@ def patched_trading_rules(mock_trading_rules):
 
 
 @pytest.fixture
-def patched_first_day_of_interest_rules(mock_first_day_of_interest_rules):
+def patched_first_day_of_interest_rules(
+    mock_first_day_of_interest_rules: FirstDayOfInterestRules,
+) -> Iterator[None]:
     """Patch TRADING_RULES so test products have valid trading rules."""
     with patch(
         "mxm.refdata.trading_calendars.first_day_of_interest.FIRST_DAY_OF_INTEREST_RULES",
@@ -205,13 +230,15 @@ def patched_first_day_of_interest_rules(mock_first_day_of_interest_rules):
         yield
 
 
+@pytest.mark.usefixtures(
+    "patched_trading_rules",
+    "patched_first_day_of_interest_rules",
+)
 def test_create_contracts_for_product_all_months(
-    contract_factory,
-    all_months_product,
-    mock_periods,
-    patched_trading_rules,
-    patched_first_day_of_interest_rules,
-):
+    contract_factory: FuturesContractFactory,
+    all_months_product: FuturesProduct,
+    mock_periods: dict[str, Period],
+) -> None:
     """Test contract creation for a product allowing all months."""
     contracts = contract_factory.create_contracts_for_product(
         all_months_product, mock_periods
@@ -227,13 +254,15 @@ def test_create_contracts_for_product_all_months(
     assert set(generated_ids) == set(expected_ids), "Mismatch in contract IDs."
 
 
+@pytest.mark.usefixtures(
+    "patched_trading_rules",
+    "patched_first_day_of_interest_rules",
+)
 def test_create_contracts_for_product_partial_months(
-    contract_factory,
-    partial_months_product,
-    mock_periods,
-    patched_trading_rules,
-    patched_first_day_of_interest_rules,
-):
+    contract_factory: FuturesContractFactory,
+    partial_months_product: FuturesProduct,
+    mock_periods: dict[str, Period],
+) -> None:
     """Test contract creation for a product with only selected months."""
     contracts = contract_factory.create_contracts_for_product(
         partial_months_product, mock_periods
@@ -249,13 +278,15 @@ def test_create_contracts_for_product_partial_months(
     assert set(generated_ids) == set(expected_ids), "Mismatch in contract IDs."
 
 
+@pytest.mark.usefixtures(
+    "patched_trading_rules",
+    "patched_first_day_of_interest_rules",
+)
 def test_create_contracts_for_product_quarterly(
-    contract_factory,
-    quarterly_product,
-    mock_periods,
-    patched_trading_rules,
-    patched_first_day_of_interest_rules,
-):
+    contract_factory: FuturesContractFactory,
+    quarterly_product: FuturesProduct,
+    mock_periods: dict[str, Period],
+) -> None:
     """Test contract creation for a product with only Mar, Jun, Sep, Dec months."""
     contracts = contract_factory.create_contracts_for_product(
         quarterly_product, mock_periods

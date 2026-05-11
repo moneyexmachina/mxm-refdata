@@ -23,7 +23,9 @@ from mxm.refdata.trading_calendars.nth_calendar_day_of_period import (
         ("2025-Q3", -10, datetime.date(2025, 9, 21)),  # 10th-last day of Q3
     ],
 )
-def test_get_nth_calendar_day_of_period(period_id, n, expected):
+def test_get_nth_calendar_day_of_period(
+    period_id: str, n: int, expected: datetime.date
+):
     """Test retrieving the N-th calendar day of a period."""
     period = PeriodFactory.get_period(period_id=period_id)
     assert get_nth_calendar_day_of_period(period, n) == expected

@@ -3,6 +3,7 @@
 from datetime import date
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy import create_engine
 
 from mxm.refdata.database.sql_session_manager import SQLSessionManager
@@ -48,8 +49,8 @@ def futures_contracts():
             period_id="Jan-2024",
             contract_id="TEST.Jan-2024",
             contract_size=100.0,
-            currency="USD",
-            unit="TROY_OUNCE",
+            currency=Currency.USD,
+            unit=ProductUnit.TROY_OUNCE,
             trading_calendar="Default Calendar",
             first_day_of_interest=date(2024, 1, 1),
             last_trading_day=date(2024, 1, 31),
@@ -67,18 +68,20 @@ def db_session_manager():
 
 
 @pytest.fixture
-def ref_data_service(db_session_manager):
+def ref_data_service(db_session_manager: SQLSessionManager):
     """Fixture to create an instance of RefDataService."""
     return RefDataService(session_manager=db_session_manager)
 
 
 @pytest.fixture(autouse=True)
-def reset_db(ref_data_service):
+def reset_db(ref_data_service: RefDataService):
     """Ensure a clean database state before each test."""
     ref_data_service.reset_database()
 
 
-def test_initialise_periods(ref_data_service, db_session_manager):
+def test_initialise_periods(
+    ref_data_service: RefDataService, db_session_manager: SQLSessionManager
+):
     """Test that periods are correctly initialized and stored in the database."""
     ref_data_service.initialise_periods(
         start_date=date(2024, 1, 1), end_date=date(2024, 12, 31)
@@ -95,7 +98,10 @@ def test_initialise_periods(ref_data_service, db_session_manager):
 
 
 def test_initialise_futures_products(
-    ref_data_service, db_session_manager, mocker, futures_products
+    ref_data_service: RefDataService,
+    db_session_manager: SQLSessionManager,
+    mocker: MockerFixture,
+    futures_products: list[FuturesProduct],
 ):
     """Test that futures products are correctly loaded from a CSV file."""
     mocker.patch(
@@ -114,11 +120,11 @@ def test_initialise_futures_products(
 
 
 def test_initialise_futures_contracts(
-    ref_data_service,
-    db_session_manager,
-    mocker,
-    futures_products,
-    futures_contracts,
+    ref_data_service: RefDataService,
+    db_session_manager: SQLSessionManager,
+    mocker: MockerFixture,
+    futures_products: list[FuturesProduct],
+    futures_contracts: list[FuturesContract],
 ):
     """Test that futures contracts are correctly generated based on existing products and periods."""
     ref_data_service.initialise_periods(
@@ -149,11 +155,11 @@ def test_initialise_futures_contracts(
 
 
 def test_setup_instruments(
-    ref_data_service,
-    db_session_manager,
-    mocker,
-    futures_products,
-    futures_contracts,
+    ref_data_service: RefDataService,
+    db_session_manager: SQLSessionManager,
+    mocker: MockerFixture,
+    futures_products: list[FuturesProduct],
+    futures_contracts: list[FuturesContract],
 ):
     """Test that setup_instruments correctly initializes all entities in sequence."""
     mocker.patch(
@@ -186,7 +192,9 @@ def test_setup_instruments(
     assert contract_data[0][0] == "TEST.Jan-2024", "Expected contract ID to match mock."
 
 
-def test_reset_database(ref_data_service, db_session_manager):
+def test_reset_database(
+    ref_data_service: RefDataService, db_session_manager: SQLSessionManager
+):
     """Test that reset_database fully clears all tables."""
     ref_data_service.reset_database()
 

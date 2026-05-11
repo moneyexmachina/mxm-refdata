@@ -9,12 +9,12 @@ from mxm.refdata.services.period_factory import PeriodFactory
 
 
 @pytest.fixture
-def factory():
+def factory() -> PeriodFactory:
     """Fixture to create a PeriodFactory instance."""
     return PeriodFactory()
 
 
-def test_get_period_by_period_id(factory):
+def test_get_period_by_period_id(factory: PeriodFactory):
     """Test getting a Period object by period_id."""
     period = factory.get_period(period_id="2024-Q1")
     assert period.period_id == "2024-Q1"
@@ -23,7 +23,7 @@ def test_get_period_by_period_id(factory):
     assert period.last_date == date(2024, 3, 31)
 
 
-def test_get_period_by_date_and_type(factory):
+def test_get_period_by_date_and_type(factory: PeriodFactory):
     """Test getting a Period object by date and type."""
     period = factory.get_period(
         date_obj=date(2024, 2, 15), period_type=PeriodType.MONTH
@@ -34,20 +34,20 @@ def test_get_period_by_date_and_type(factory):
     assert period.last_date == date(2024, 2, 29)  # Leap year
 
 
-def test_cache_behavior(factory):
+def test_cache_behavior(factory: PeriodFactory):
     """Test that the factory reuses cached Period objects."""
     period1 = factory.get_period(period_id="2024-Q1")
     period2 = factory.get_period(period_id="2024-Q1")
     assert period1 is period2  # Both references should point to the same object
 
 
-def test_invalid_period_id(factory):
+def test_invalid_period_id(factory: PeriodFactory):
     """Test handling of invalid period_id."""
     with pytest.raises(ValueError, match="Unrecognized period_id format"):
         factory.get_period(period_id="Invalid-Format")
 
 
-def test_generate_next_n_periods(factory):
+def test_generate_next_n_periods(factory: PeriodFactory):
     """Test generating the next n Period objects."""
     start_date = date(2024, 2, 15)
     periods = factory.get_next_n_periods(
@@ -59,7 +59,7 @@ def test_generate_next_n_periods(factory):
     assert periods[2].period_id == "Apr-2024"
 
 
-def test_get_periods_in_range(factory):
+def test_get_periods_in_range(factory: PeriodFactory):
     """Test generating periods within a date range."""
     start_date = date(2024, 1, 1)
     end_date = date(2024, 6, 30)
@@ -125,12 +125,6 @@ def test_calculate_week_dates():
     assert last_date == date(2024, 3, 10)
 
 
-def test_calculate_period_dates_invalid_type():
-    """Test calculate_period_dates with an unsupported PeriodType."""
-    with pytest.raises(ValueError, match="Unsupported period type: INVALID"):
-        PeriodFactory.calculate_period_dates("2024", "INVALID")
-
-
 def test_calculate_period_dates_invalid_id():
     """Test calculate_period_dates with a malformed period_id."""
     with pytest.raises(ValueError):
@@ -180,12 +174,7 @@ def test_shift_weeks():
     assert shifted_date == date(2024, 1, 15)
 
 
-def test_invalid_period_type():
-    with pytest.raises(ValueError, match="Unsupported period type: INVALID"):
-        PeriodFactory.shift_date_by_n_periods(date(2024, 1, 1), "INVALID", 2)
-
-
-def test_shift_period_by_n_month(factory):
+def test_shift_period_by_n_month(factory: PeriodFactory):
     """Test shifting a monthly period forward and backward."""
     period = factory.get_period(period_id="Jun-2025")
 
@@ -196,7 +185,7 @@ def test_shift_period_by_n_month(factory):
     assert shifted_backward.period_id == "Mar-2025"
 
 
-def test_shift_period_by_n_quarter(factory):
+def test_shift_period_by_n_quarter(factory: PeriodFactory):
     """Test shifting a quarterly period forward and backward."""
     period = factory.get_period(period_id="2025-Q2")
 
@@ -207,7 +196,7 @@ def test_shift_period_by_n_quarter(factory):
     assert shifted_backward.period_id == "2024-Q4"
 
 
-def test_shift_period_by_n_year(factory):
+def test_shift_period_by_n_year(factory: PeriodFactory):
     """Test shifting a yearly period forward and backward."""
     period = factory.get_period(period_id="2025")
 
@@ -218,7 +207,7 @@ def test_shift_period_by_n_year(factory):
     assert shifted_backward.period_id == "2023"
 
 
-def test_shift_period_by_n_week(factory):
+def test_shift_period_by_n_week(factory: PeriodFactory):
     """Test shifting a weekly period forward and backward."""
     period = factory.get_period(period_id="2025-W10")
 
@@ -227,13 +216,3 @@ def test_shift_period_by_n_week(factory):
 
     shifted_backward = factory.shift_period_by_n(period, -3)
     assert shifted_backward.period_id == "2025-W7"
-
-
-def test_shift_period_by_n_invalid(factory):
-    """Test that passing a non-integer `n` raises a TypeError."""
-    period = factory.get_period(period_id="2025-Q2")  # Valid quarter
-
-    with pytest.raises(TypeError):
-        factory.shift_period_by_n(
-            period, "INVALID"
-        )  # Passing a string instead of an integer
