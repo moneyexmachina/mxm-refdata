@@ -2,9 +2,11 @@ import datetime
 
 import pandas as pd
 import pytest
-from exchange_calendars.errors import DateOutOfBounds
 
-from mxm.refdata.trading_calendars.trading_calendar import TradingCalendar
+from mxm.refdata.trading_calendars.trading_calendar import (
+    TradingCalendar,
+    TradingCalendarCoverageError,
+)
 
 
 @pytest.fixture
@@ -119,8 +121,8 @@ def test_get_last_prior_session_date(cme_calendar: TradingCalendar):
     ) == datetime.date(2025, 4, 17)
 
     # ---- Edge case: Date before first available session (should raise DateOutOfBounds) ----
-    first_session_date = cme_calendar.calendar.first_session
-    with pytest.raises(DateOutOfBounds):
+    first_session_date = cme_calendar.first_session
+    with pytest.raises(TradingCalendarCoverageError):
         cme_calendar.get_last_prior_session_date(
             first_session_date - datetime.timedelta(days=1)
         )

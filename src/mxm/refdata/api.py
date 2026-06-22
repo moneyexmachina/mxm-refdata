@@ -2,6 +2,11 @@ import logging
 from datetime import date
 from typing import Any
 
+from mxm.refdata.config import (
+    RefDataConfigData,
+    RefDataConfigInput,
+    normalise_refdata_config_data,
+)
 from mxm.refdata.database.sql_session_manager import SQLSessionManager
 from mxm.refdata.mappings import (
     futures_contract_from_orm,
@@ -23,7 +28,6 @@ from mxm.refdata.models.periods import Period, PeriodType
 from mxm.refdata.models.products.futures_product import FuturesProduct
 from mxm.refdata.services.bootstrap import ensure_refdata_ready
 from mxm.refdata.utils.cache_manager import CacheManager
-from mxm.refdata.utils.config import load_config
 
 
 class RefDataLookupError(KeyError):
@@ -49,21 +53,31 @@ class RefDataAPI:
     Provides optimized querying and caching.
     """
 
-    def __init__(self, session_manager: SQLSessionManager | None = None):
-        """
-        Initialize the RefDataAPI with a session manager.
-
-        Args:
-            session_manager (SQLSessionManager): Manages database connections.
-        """
-        self.cfg = load_config()
-        self.session_manager = session_manager or SQLSessionManager(
-            db_url=self.cfg.SQL_DB_URL
-        )
-        self.cache: CacheManager[Any] = CacheManager(
-            maxsize=10000
-        )  # Add caching for faster access
+    def __init__(
+        self,
+        *,
+        config: RefDataConfigData,
+        session_manager: SQLSessionManager,
+    ) -> None:
+        """Initialise the API from explicit refdata dependencies."""
+        self.config = config
+        self.session_manager = session_manager
+        self.cache: CacheManager[Any] = CacheManager(maxsize=10000)
         self.logger = logging.getLogger(__name__)
+
+    @classmethod
+    def from_config_data(
+        cls,
+        config: RefDataConfigInput,
+    ) -> "RefDataAPI":
+        """Construct a configured RefDataAPI from resolved config data."""
+        normalised_config = normalise_refdata_config_data(config)
+        session_manager = SQLSessionManager.from_db_url(normalised_config["SQL_DB_URL"])
+
+        return cls(
+            config=normalised_config,
+            session_manager=session_manager,
+        )
 
     def maybe_get_contract_by_id(self, contract_id: str) -> FuturesContract | None:
         """
@@ -88,7 +102,7 @@ class RefDataAPI:
             - checking whether a product universe has been prepared
             - probing availability across time ranges
         """
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
 
         cache_key = f"contract:{contract_id}"
         if cached := self.cache.get(cache_key):
@@ -154,7 +168,7 @@ class RefDataAPI:
           - Preserves the input order of `contract_ids`.
           - Uses caching to avoid redundant DB queries.
         """
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
 
         if not contract_ids:
             return []
@@ -198,7 +212,7 @@ class RefDataAPI:
 
         Optionally restrict scope by a single product_id or a list of product_ids.
         """
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
 
         if product_id is not None and product_ids is not None:
             raise ValueError("Provide only one of product_id or product_ids, not both.")
@@ -243,7 +257,7 @@ class RefDataAPI:
     def get_all_products(self) -> list[FuturesProduct]:
         """Retrieve all futures products, with caching."""
 
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
         cache_key = "all_products"
         if cached := self.cache.get(cache_key):
             return cached
@@ -257,7 +271,7 @@ class RefDataAPI:
 
     def get_product_by_id(self, product_id: str) -> FuturesProduct:
         """Retrieve a specific futures product by its ID, with caching."""
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
 
         cache_key = f"product:{product_id}"
         if cached := self.cache.get(cache_key):
@@ -293,7 +307,7 @@ class RefDataAPI:
           are returned.
         - Results are cached (cache key includes period_type).
         """
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
 
         pt: PeriodType | None
         if period_type is None:
@@ -352,7 +366,7 @@ class RefDataAPI:
 
     def get_contracts_for_date(self, target_date: date) -> list[FuturesContract]:
         """Retrieve contracts that are in their delivery period on a given date."""
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
 
         cache_key = f"contracts_for_date:{target_date.isoformat()}"
         if cached := self.cache.get(cache_key):
@@ -375,7 +389,7 @@ class RefDataAPI:
 
     def get_periods(self) -> list[Period]:
         """Retrieve all available periods."""
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
         cache_key = "all_periods"
         if cached := self.cache.get(cache_key):
             return cached
@@ -394,7 +408,7 @@ class RefDataAPI:
         Returns:
             Period if found, otherwise None.
         """
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
 
         cache_key = f"period:{period_id}"
         if cached := self.cache.get(cache_key):
@@ -418,7 +432,7 @@ class RefDataAPI:
           - Preserves the input order of `period_ids`.
           - Uses caching to avoid redundant DB queries.
         """
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
 
         if not period_ids:
             return []
@@ -450,7 +464,7 @@ class RefDataAPI:
 
         Cached as a whole-list artifact; cycles are few and essentially static for a DB build.
         """
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
 
         cache_key = "all_period_cycles"
         if cached := self.cache.get(cache_key):
@@ -474,7 +488,7 @@ class RefDataAPI:
         Returns:
             PeriodCycle if found, otherwise None.
         """
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
 
         cache_key = f"period_cycle:{cycle_id}"
         if cached := self.cache.get(cache_key):
@@ -500,7 +514,7 @@ class RefDataAPI:
         This is primarily an inspection/audit surface. Selection logic should usually use
         `get_cycle_elements(...)` for targeted lookup.
         """
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
 
         cache_key = f"period_cycle_memberships:{cycle_id}"
         if cached := self.cache.get(cache_key):
@@ -543,7 +557,7 @@ class RefDataAPI:
         Returns:
             Dict[str, int] mapping period_id -> cycle_element
         """
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
 
         if not period_ids:
             return {}
@@ -583,7 +597,7 @@ class RefDataAPI:
         Uses caching; implemented via a direct ORM query (not via get_cycle_elements)
         to avoid building large cache keys for singleton usage.
         """
-        ensure_refdata_ready(self.session_manager, self.cfg)
+        ensure_refdata_ready(self.session_manager, self.config)
 
         cache_key = f"period_cycle_element:{cycle_id}:{period_id}"
         if cached := self.cache.get(cache_key):

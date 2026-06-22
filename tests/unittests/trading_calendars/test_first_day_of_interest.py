@@ -14,7 +14,7 @@ from mxm.refdata.trading_calendars.trading_calendar import TradingCalendar
 @pytest.fixture
 def trading_calendar():
     """Fixture to provide a TradingCalendar instance."""
-    return TradingCalendar("CME", start=date(2010, 1, 1), end=date(2039, 12, 31))
+    return TradingCalendar("CME")
 
 
 @pytest.mark.parametrize(

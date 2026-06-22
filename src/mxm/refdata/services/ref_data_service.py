@@ -5,6 +5,7 @@ from datetime import date
 
 from sqlalchemy.orm import DeclarativeBase
 
+from mxm.refdata.config import RefDataConfigData
 from mxm.refdata.database.sql_session_manager import SQLSessionManager
 from mxm.refdata.mappings import (
     futures_contract_to_orm,
@@ -13,7 +14,7 @@ from mxm.refdata.mappings import (
     period_from_orm,
     period_to_orm,
 )
-from mxm.refdata.models import FuturesContract, Period
+from mxm.refdata.models import FuturesContract, FuturesProduct, Period
 from mxm.refdata.models.orm.futures_contracts import FuturesContractORM
 from mxm.refdata.models.orm.futures_products import FuturesProductORM
 from mxm.refdata.models.orm.period_cycles import (
@@ -26,14 +27,15 @@ from mxm.refdata.models.periods import PeriodType
 from mxm.refdata.services.futures_contract_factory import FuturesContractFactory
 from mxm.refdata.services.futures_product_factory import FuturesProductFactory
 from mxm.refdata.services.period_factory import PeriodFactory
-from mxm.refdata.utils.config import load_config
-from mxm.refdata.utils.resources import futures_products_csv_path
+from mxm.refdata.trading_calendars.trading_calendar import TradingCalendar
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 CYCLE_ID_CALENDAR_MONTHS = "CALENDAR_MONTHS"
 CYCLE_ID_CALENDAR_QUARTERS = "CALENDAR_QUARTERS"
+CONTRACT_RULE_LOOKBACK_YEARS = 2
+CONTRACT_RULE_LOOKAHEAD_YEARS = 1
 
 
 class RefDataService:
@@ -41,17 +43,25 @@ class RefDataService:
     Manages reference data processes including initializing, updating, and resetting futures products.
     """
 
-    def __init__(self, session_manager: SQLSessionManager):
-        """
-        Initialize the RefDataService with a session manager.
-
-        Args:
-            session_manager (SQLSessionManager): The session manager handling DB connections.
-        """
+    def __init__(
+        self,
+        *,
+        config: RefDataConfigData,
+        session_manager: SQLSessionManager,
+        product_factory: FuturesProductFactory | None = None,
+        contract_factory: FuturesContractFactory | None = None,
+        period_factory: PeriodFactory | None = None,
+    ) -> None:
+        """Initialise the service from explicit refdata dependencies."""
+        self.config = config
         self.session_manager = session_manager
-        self.product_factory = FuturesProductFactory()
-        self.contract_factory = FuturesContractFactory()
-        self.period_factory = PeriodFactory()
+        self.product_factory = (
+            product_factory or FuturesProductFactory.from_config_data(config)
+        )
+        self.contract_factory = (
+            contract_factory or FuturesContractFactory.from_config_data(config)
+        )
+        self.period_factory = period_factory or PeriodFactory()
 
     def reset_database(self):
         """
@@ -114,8 +124,12 @@ class RefDataService:
         logging.info("Starting full instrument setup...")
 
         # Ensure we have a reasonable date range if not provided
-        start_date = start_date or date(2000, 1, 1)
-        end_date = end_date or date(2045, 12, 31)
+        start_date = start_date or date.fromisoformat(
+            self.config["REFDATA_CONTRACT_START_DATE"]
+        )
+        end_date = end_date or date.fromisoformat(
+            self.config["REFDATA_CONTRACT_END_DATE"]
+        )
 
         # Step 1: Initialise periods (YEAR, QUARTER, MONTH)
         self.initialise_periods(start_date=start_date, end_date=end_date)
@@ -143,14 +157,8 @@ class RefDataService:
             raise ValueError(
                 "Database already contains products. Run `reset_database()` first."
             )
-
-        if csv_file_path is None:
-            cfg = load_config()
-            with futures_products_csv_path(cfg) as p:
-                products = FuturesProductFactory.initialise_from_csv(str(p))
-        else:
-            assert csv_file_path is not None
-            products = self.product_factory.initialise_from_csv(csv_file_path)
+        csv_path = csv_file_path or self.config["REFDATA_FUTURES_PRODUCTS_CSV_PATH"]
+        products = self.product_factory.initialise_from_csv(csv_path)
 
         with self.session_manager.db_session_scope() as session:
             for product in products:
@@ -210,31 +218,38 @@ class RefDataService:
             start_date (date): The start date for contract generation.
             end_date (date): The end date for contract generation.
         """
+
         with self.session_manager.db_session_scope() as session:
-            # Retrieve all existing products and convert them before session closes
             products = [
-                futures_product_from_orm(productORM)
-                for productORM in session.query(FuturesProductORM).all()
+                futures_product_from_orm(product_orm)
+                for product_orm in session.query(FuturesProductORM).all()
             ]
             if not products:
                 raise ValueError(
-                    "No products found in the database. Run initialise_futures_products() first."
+                    "No products found in the database. "
+                    "Run initialise_futures_products() first."
                 )
 
-            # Retrieve all periods within the date range
-            periods = {
-                p.period_id: period_from_orm(p)
-                for p in session.query(PeriodORM)
-                .filter(
-                    PeriodORM.first_date >= start_date, PeriodORM.last_date <= end_date
-                )
-                .all()
-            }
-            if not periods:
-                raise ValueError(
-                    "No periods found in the database. Run initialise_periods() first."
-                )
+            self._validate_calendar_coverage_for_contract_initialisation(
+                products=products,
+                start_date=start_date,
+                end_date=end_date,
+            )
 
+            with self.session_manager.db_session_scope() as session:
+                periods = {
+                    p.period_id: period_from_orm(p)
+                    for p in session.query(PeriodORM)
+                    .filter(
+                        PeriodORM.first_date >= start_date,
+                        PeriodORM.last_date <= end_date,
+                    )
+                    .all()
+                }
+                if not periods:
+                    raise ValueError(
+                        "No periods found in the database. Run initialise_periods() first."
+                    )
         # Generate contracts outside of session
         contracts: list[FuturesContract] = []
         for product in products:
@@ -320,3 +335,38 @@ class RefDataService:
                     )
 
             session.add_all(memberships)
+
+    @classmethod
+    def from_config_data(
+        cls,
+        *,
+        config: RefDataConfigData,
+        session_manager: SQLSessionManager,
+    ) -> "RefDataService":
+        """Construct a configured RefDataService from materialised config data."""
+        return cls(
+            config=config,
+            session_manager=session_manager,
+        )
+
+    def _validate_calendar_coverage_for_contract_initialisation(
+        self,
+        *,
+        products: list[FuturesProduct],
+        start_date: date,
+        end_date: date,
+    ) -> None:
+        required_start = date(
+            start_date.year - CONTRACT_RULE_LOOKBACK_YEARS,
+            start_date.month,
+            start_date.day,
+        )
+        required_end = date(
+            end_date.year + CONTRACT_RULE_LOOKAHEAD_YEARS,
+            end_date.month,
+            end_date.day,
+        )
+
+        for product in products:
+            calendar = TradingCalendar(product.trading_calendar)
+            calendar.ensure_range_in_coverage(required_start, required_end)

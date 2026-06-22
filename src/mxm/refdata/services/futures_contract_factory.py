@@ -1,9 +1,6 @@
 """Factory to create futures contracts."""
 
-import datetime
-import threading
-from typing import ClassVar
-
+from mxm.refdata.config import RefDataConfigData
 from mxm.refdata.models.contracts.futures_contract import FuturesContract
 from mxm.refdata.models.months import Month
 from mxm.refdata.models.periods import Period, PeriodType
@@ -18,16 +15,10 @@ from mxm.refdata.trading_calendars.trading_calendar import TradingCalendar
 class FuturesContractFactory:
     """Factory for generating and retrieving FuturesContract instances."""
 
-    _instance = None  # Singleton instance
-    _lock = threading.Lock()  # Lock for thread safety
-    _cache: ClassVar[dict[str, FuturesContract]] = {}  # Cache for created contracts
-
-    def __new__(cls) -> "FuturesContractFactory":
-        """Ensures only one instance of FuturesContractFactory is created."""
-        with cls._lock:
-            if cls._instance is None:
-                cls._instance = super().__new__(cls)
-        return cls._instance
+    def __init__(
+        self,
+    ) -> None:
+        self._cache: dict[str, FuturesContract] = {}
 
     def create_contracts_for_product(
         self, product: FuturesProduct, available_periods: dict[str, Period]
@@ -81,7 +72,7 @@ class FuturesContractFactory:
 
         return True
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """Clear the cache of created contracts."""
         self._cache.clear()
 
@@ -104,9 +95,8 @@ class FuturesContractFactory:
         """
         trading_calendar = TradingCalendar(
             product.trading_calendar,
-            start=datetime.date(1980, 1, 1),
-            end=datetime.date(2046, 12, 31),
         )
+
         last_trading_day = calculate_last_trading_day(
             product.product_id, period, trading_calendar
         )
@@ -125,3 +115,9 @@ class FuturesContractFactory:
             first_day_of_interest=first_day_of_interest,
             last_trading_day=last_trading_day,
         )
+
+    @classmethod
+    def from_config_data(cls, config: RefDataConfigData) -> "FuturesContractFactory":
+        """Construct a factory from fully materialised refdata configuration."""
+        _ = config
+        return cls()

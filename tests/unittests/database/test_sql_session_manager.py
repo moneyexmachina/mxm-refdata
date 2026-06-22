@@ -1,6 +1,7 @@
 """Test cases for the SQLSessionManager class."""
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from sqlalchemy import Engine, create_engine
@@ -33,8 +34,21 @@ def session_manager(
     db_engine: Engine,
     session_factory: SessionFactory,
 ) -> SQLSessionManager:
-    """Provide an instance of SQLSessionManager for testing."""
+    """Provide an explicitly constructed SQLSessionManager."""
     return SQLSessionManager(engine=db_engine, session_factory=session_factory)
+
+
+def test_from_db_url(tmp_path: Path) -> None:
+    """Test constructing a session manager from an explicit database URL."""
+    db_path = tmp_path / "nested" / "test_db.sqlite"
+
+    session_manager = SQLSessionManager.from_db_url(f"sqlite:///{db_path}")
+
+    try:
+        assert db_path.parent.exists()
+        assert session_manager.check_db_connection() is True
+    finally:
+        session_manager.get_engine().dispose()
 
 
 def test_db_session_scope(session_manager: SQLSessionManager) -> None:
@@ -69,12 +83,12 @@ def test_check_db_connection(session_manager: SQLSessionManager) -> None:
     assert session_manager.check_db_connection() is True
 
 
-def test_get_session_factory_default(session_manager: SQLSessionManager) -> None:
-    """Test retrieving the default session factory."""
+def test_get_session_factory(session_manager: SQLSessionManager) -> None:
+    """Test retrieving the configured session factory."""
     factory = session_manager.get_session_factory()
 
-    assert factory is not None, "Default session factory should not be None."
-    assert callable(factory), "Session factory should be a callable."
+    assert factory is not None, "Session factory should not be None."
+    assert callable(factory), "Session factory should be callable."
 
     session = factory()
     try:
@@ -87,7 +101,7 @@ def test_get_session_factory_custom(
     session_manager: SQLSessionManager,
     session_factory: SessionFactory,
 ) -> None:
-    """Test retrieving a custom session factory."""
+    """Test retrieving an explicitly provided session factory."""
     custom_session_manager = SQLSessionManager(
         engine=session_manager.get_engine(),
         session_factory=session_factory,
@@ -96,7 +110,7 @@ def test_get_session_factory_custom(
     factory = custom_session_manager.get_session_factory()
 
     assert factory is session_factory, "Expected the provided session factory."
-    assert callable(factory), "Session factory should be a callable."
+    assert callable(factory), "Session factory should be callable."
 
     session = factory()
     try:
