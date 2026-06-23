@@ -12,9 +12,9 @@ Semantics
 
 from __future__ import annotations
 
-import threading
 from typing import Any, TypedDict, cast
 
+from mxm.refdata.config import RefDataConfigData
 from mxm.refdata.models.currencies import Currency
 from mxm.refdata.models.periods import PeriodType
 from mxm.refdata.models.products.futures_product import FuturesProduct, SettlementMethod
@@ -56,16 +56,9 @@ class FuturesProductSpec(TypedDict, total=False):
 class FuturesProductFactory:
     """Factory / interning cache for FuturesProduct instances."""
 
-    _instance: FuturesProductFactory | None = None
-    _lock = threading.Lock()
-    _cache: dict[str, FuturesProduct]
-
-    def __new__(cls) -> FuturesProductFactory:
-        with cls._lock:
-            if cls._instance is None:
-                cls._instance = super().__new__(cls)
-                cls._instance._cache = {}  # instance-owned cache
-        return cls._instance
+    def __init__(self) -> None:
+        """Initialise an empty product interning cache."""
+        self._cache: dict[str, FuturesProduct] = {}
 
     # -------------------------
     # Core cache operations
@@ -122,11 +115,16 @@ class FuturesProductFactory:
         product = FuturesProduct(**cast(dict[str, Any], spec))  # safe boundary
         return self.intern(product)
 
-    @classmethod
-    def initialise_from_csv(cls, csv_file_path: str) -> list[FuturesProduct]:
-        """
-        Load products from CSV and intern them into the factory cache.
-        """
+    def initialise_from_csv(self, csv_file_path: str) -> list[FuturesProduct]:
+        """Load products from CSV and intern them into this factory cache."""
         products = parse_futures_products_csv(csv_file_path)
+        return [self.intern(product) for product in products]
+
+    @classmethod
+    def from_config_data(
+        cls,
+        config: RefDataConfigData,
+    ) -> FuturesProductFactory:
         factory = cls()
-        return [factory.intern(p) for p in products]
+        factory.initialise_from_csv(config["REFDATA_FUTURES_PRODUCTS_CSV_PATH"])
+        return factory

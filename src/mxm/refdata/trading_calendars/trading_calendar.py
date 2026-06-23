@@ -3,7 +3,13 @@ from typing import cast
 
 import exchange_calendars as xcals
 import pandas as pd
-from exchange_calendars.errors import InvalidCalendarName
+
+DEFAULT_XCALS_START_DATE = datetime.date(1980, 1, 2)
+DEFAULT_XCALS_END_DATE = datetime.date(2050, 12, 31)
+
+
+class TradingCalendarCoverageError(ValueError):
+    """Raised when a date falls outside the available trading-calendar coverage."""
 
 
 class TradingCalendar:
@@ -15,8 +21,6 @@ class TradingCalendar:
     def __init__(
         self,
         calendar_name: str,
-        start: datetime.date | None = None,
-        end: datetime.date | None = None,
     ):
         """
         Initializes a TradingCalendar based on an exchange calendar.
@@ -28,18 +32,15 @@ class TradingCalendar:
         Raises:
             ValueError: If the calendar name is not recognized by `exchange_calendars`.
         """
-        try:
-            if start and not end:
-                self.calendar = xcals.get_calendar(calendar_name, start=start)
-            elif end and not start:
-                self.calendar = xcals.get_calendar(calendar_name, end=end)
-            elif start and end:
-                self.calendar = xcals.get_calendar(calendar_name, start=start, end=end)
-            else:
-                self.calendar = xcals.get_calendar(calendar_name)
+        self.calendar = xcals.get_calendar(
+            calendar_name,
+            start=DEFAULT_XCALS_START_DATE,
+            end=DEFAULT_XCALS_END_DATE,
+        )
 
-        except InvalidCalendarName as e:
-            raise ValueError(f"Unknown trading calendar: {calendar_name}") from e
+        self.calendar_name = calendar_name
+        self.first_session = self.calendar.first_session.date()
+        self.last_session = self.calendar.last_session.date()
 
     def get_sessions_in_range(
         self, start: datetime.date, end: datetime.date
@@ -54,6 +55,8 @@ class TradingCalendar:
         Returns:
             pd.DatetimeIndex: A list of session timestamps in UTC.
         """
+        self._ensure_date_in_coverage(start)
+        self._ensure_date_in_coverage(end)
         return self.calendar.sessions_in_range(start, end)
 
     def shift_sessions(self, session: pd.Timestamp, offset: int) -> pd.Timestamp:
@@ -82,6 +85,9 @@ class TradingCalendar:
         Returns:
             List[datetime.date]: A list of session dates.
         """
+        self._ensure_date_in_coverage(start)
+        self._ensure_date_in_coverage(end)
+
         return [ts.date() for ts in self.get_sessions_in_range(start, end)]
 
     def shift_session_date(self, date: datetime.date, offset: int) -> datetime.date:
@@ -131,6 +137,8 @@ class TradingCalendar:
         Returns:
             bool: True if the date is a trading day, False otherwise.
         """
+        self._ensure_date_in_coverage(date)
+
         return self.calendar.is_session(date)
 
     def get_last_prior_session_date(self, date: datetime.date) -> datetime.date:
@@ -184,3 +192,31 @@ class TradingCalendar:
 
         # Now shift by `n` business days from a valid business day
         return self.shift_session_date(date, n)
+
+    def _ensure_date_in_coverage(self, date: datetime.date) -> None:
+        checked_date = _to_date(date)
+        if checked_date < self.first_session:
+            raise TradingCalendarCoverageError(
+                f"Date {date} is before available coverage for calendar "
+                f"{self.calendar_name!r}: first_session={self.first_session}."
+            )
+
+        if checked_date > self.last_session:
+            raise TradingCalendarCoverageError(
+                f"Date {date} is after available coverage for calendar "
+                f"{self.calendar_name!r}: last_session={self.last_session}."
+            )
+
+    def ensure_range_in_coverage(
+        self,
+        start: datetime.date,
+        end: datetime.date,
+    ) -> None:
+        self._ensure_date_in_coverage(start)
+        self._ensure_date_in_coverage(end)
+
+
+def _to_date(value: datetime.date | pd.Timestamp) -> datetime.date:
+    if isinstance(value, pd.Timestamp):
+        return value.date()
+    return value

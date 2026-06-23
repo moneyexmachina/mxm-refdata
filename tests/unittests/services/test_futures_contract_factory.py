@@ -300,3 +300,21 @@ def test_create_contracts_for_product_quarterly(
     generated_ids = [contract.contract_id for contract in contracts]
 
     assert set(generated_ids) == set(expected_ids), "Mismatch in contract IDs."
+
+
+@pytest.mark.usefixtures(
+    "patched_trading_rules",
+    "patched_first_day_of_interest_rules",
+)
+def test_factory_instances_have_independent_caches(
+    contract_factory: FuturesContractFactory,
+    all_months_product: FuturesProduct,
+    mock_periods: dict[str, Period],
+) -> None:
+    """Separate factory instances should not share contract cache state."""
+    other_factory = FuturesContractFactory()
+
+    contract_factory.create_contracts_for_product(all_months_product, mock_periods)
+
+    assert contract_factory._cache
+    assert other_factory._cache == {}

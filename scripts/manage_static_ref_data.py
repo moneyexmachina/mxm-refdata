@@ -6,7 +6,6 @@ from datetime import date
 
 from mxm.refdata.database.sql_session_manager import SQLSessionManager
 from mxm.refdata.services.ref_data_service import RefDataService
-from mxm.refdata.utils.config import load_config
 
 # Configure logging
 logging.basicConfig(
@@ -18,12 +17,6 @@ logger = logging.getLogger(__name__)
 
 def main():
     """CLI script to manage reference data: reset and initialize database."""
-    # Load default config
-    config = load_config()
-    default_csv_path = (
-        config.REFDATA_FUTURES_PRODUCTS_CSV_PATH or "data/futures_products.csv"
-    )
-
     # Argument parser
     parser = argparse.ArgumentParser(description="Manage the reference data database.")
     parser.add_argument(
@@ -32,11 +25,17 @@ def main():
         help="Reset the database before initializing (WARNING: This deletes all existing data!).",
     )
     parser.add_argument(
+        "--db-url",
+        required=True,
+        help="Explicit database URL for the refdata database.",
+    )
+    parser.add_argument(
         "--csv",
         type=str,
-        default=default_csv_path,
-        help=f"Path to the CSV file for futures products (default: {default_csv_path}).",
+        default=None,
+        help="Path to the CSV file for futures products. If omitted, packaged resources are used.",
     )
+
     parser.add_argument(
         "--start-date",
         type=lambda s: date.fromisoformat(s),
@@ -53,7 +52,7 @@ def main():
     args = parser.parse_args()
 
     logger.info("Initializing Reference Data Service...")
-    session_manager = SQLSessionManager()
+    session_manager = SQLSessionManager.from_db_url(args.db_url)
     ref_data_service = RefDataService(session_manager=session_manager)
 
     # Optionally reset the database

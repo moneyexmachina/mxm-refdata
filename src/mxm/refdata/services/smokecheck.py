@@ -294,13 +294,10 @@ SMOKE_CHECKS: tuple[tuple[str, SmokeCheck], ...] = (
 )
 
 
-def run_smokechecks(
-    session_manager: SQLSessionManager | None = None,
-) -> SmokeCheckReport:
+def run_smokechecks(session_manager: SQLSessionManager) -> SmokeCheckReport:
     """Run operational smoke checks against the materialised refdata database."""
-    sm = session_manager or SQLSessionManager()
 
-    with sm.db_session_scope() as session:
+    with session_manager.db_session_scope() as session:
         counts = count_refdata_rows(session)
         results: list[SmokeCheckResult] = []
 
