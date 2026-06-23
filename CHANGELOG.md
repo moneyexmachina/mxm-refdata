@@ -16,7 +16,69 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 - (none)
 
 ---
+## [0.4.0] - 2026-06-23
 
+### Added
+
+- `RefDataConfigInput` and `RefDataConfigData` configuration models.
+- `normalise_refdata_config_data(...)` to materialise complete refdata configuration from partial inputs.
+- `RefDataAPI.from_config_data(...)` as the primary API construction boundary.
+- `RefDataService.from_config_data(...)` for configured service construction.
+- `FuturesProductFactory.from_config_data(...)`.
+- Trading-calendar coverage validation during futures-contract materialisation.
+- Explicit CLI configuration via:
+  - `--db-url`
+  - `--contract-start-date`
+  - `--contract-end-date`
+
+### Changed
+
+- Refactored the package from implicit configuration discovery to explicit dependency construction.
+- `RefDataAPI` now requires fully resolved configuration and no longer discovers configuration internally.
+- `SQLSessionManager` now uses explicit construction through:
+  - `SQLSessionManager(...)`
+  - `SQLSessionManager.from_db_url(...)`
+- Refactored bootstrap services to be fully driven by `RefDataConfigData`.
+- Removed bootstrap-time override parameters in favour of a single authoritative configuration object.
+- Separated:
+  - contract materialisation horizon
+  - trading-calendar source coverage
+- Renamed:
+  - `REFDATA_CALENDAR_START_DATE` → `REFDATA_CONTRACT_START_DATE`
+  - `REFDATA_CALENDAR_END_DATE` → `REFDATA_CONTRACT_END_DATE`
+- Refactored `FuturesProductFactory` from singleton-style behaviour to explicit instance-based construction.
+- Refactored `FuturesContractFactory` from singleton-style behaviour to explicit instance-based construction.
+- Moved package configuration from utility-layer status to a first-class package concern.
+- Updated operational CLI commands to construct services explicitly from configuration rather than relying on hidden defaults.
+- Updated README and architecture documentation to reflect runtime-oriented construction patterns.
+
+### Fixed
+
+- Removed remaining hidden configuration-loading pathways from refdata service construction.
+- Removed implicit database/session-manager construction throughout operational workflows.
+- Improved consistency between CLI, API, bootstrap, and service construction paths.
+- Corrected trading-calendar boundary handling and introduced explicit coverage validation.
+- Eliminated a number of pyright and typing issues exposed by the runtime-integration refactor.
+
+### Tests
+
+- Reworked API tests around explicit configuration-driven construction.
+- Added configuration normalisation test coverage.
+- Added factory-construction test coverage.
+- Added CLI boundary and wiring tests.
+- Added trading-calendar coverage validation tests.
+- Expanded service-level tests to cover the new runtime-driven construction model.
+
+### Notes
+
+This release completes the Session 48c runtime-integration work.
+
+`mxm-refdata` is now a configuration-driven library designed to be constructed from resolved runtime configuration rather than discovering configuration internally. This aligns the package with the broader MXM architecture based on explicit dependency construction, `RuntimeContext`, and configuration injection.
+
+Future work will focus on:
+- externalising product specifications into a dedicated `mxm-refdata-source` repository,
+- downstream integration with `mxm-runtime`,
+- and PostgreSQL-backed operational deployments.
 ## [0.3.0] - 2026-05-11
 
 ### Added
