@@ -12,6 +12,7 @@ Semantics
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, TypedDict, cast
 
 from mxm.refdata.config import RefDataConfigData
@@ -19,7 +20,9 @@ from mxm.refdata.models.currencies import Currency
 from mxm.refdata.models.periods import PeriodType
 from mxm.refdata.models.products.futures_product import FuturesProduct, SettlementMethod
 from mxm.refdata.models.units import ProductUnit
-from mxm.refdata.parsing.futures_products_from_csv import parse_futures_products_csv
+from mxm.refdata.parsing.futures_product import (
+    build_futures_products,
+)
 
 
 class FuturesProductSpec(TypedDict, total=False):
@@ -115,16 +118,29 @@ class FuturesProductFactory:
         product = FuturesProduct(**cast(dict[str, Any], spec))  # safe boundary
         return self.intern(product)
 
-    def initialise_from_csv(self, csv_file_path: str) -> list[FuturesProduct]:
-        """Load products from CSV and intern them into this factory cache."""
-        products = parse_futures_products_csv(csv_file_path)
-        return [self.intern(product) for product in products]
+    def initialise(self, source: str, path: str) -> list[FuturesProduct]:
+        return (
+            self.initialise_from_json(path)
+            if source == "json"
+            else self.initialise_from_csv(path)
+        )
+
+    def initialise_from_csv(self, file_path: str) -> list[FuturesProduct]:
+        """Legacy CSV loader (kept for compatibility)."""
+
+        products = build_futures_products(Path(file_path), source="csv")
+
+        return [self.intern(p) for p in products]
+
+    def initialise_from_json(self, root_dir: str) -> list[FuturesProduct]:
+        """Load products from JSON directory and intern them into cache."""
+
+        products = build_futures_products(Path(root_dir), source="json")
+
+        return [self.intern(p) for p in products]
 
     @classmethod
-    def from_config_data(
-        cls,
-        config: RefDataConfigData,
-    ) -> FuturesProductFactory:
+    def from_config_data(cls, config: RefDataConfigData) -> FuturesProductFactory:
         factory = cls()
-        factory.initialise_from_csv(config["REFDATA_FUTURES_PRODUCTS_CSV_PATH"])
+        factory.initialise_from_json(config["REFDATA_FUTURES_PRODUCTS_JSON_ROOT"])
         return factory

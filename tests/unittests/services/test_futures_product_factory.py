@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pytest import MonkeyPatch
 
@@ -146,16 +148,18 @@ def test_create_from_spec_rejects_missing_product_id() -> None:
         factory.create_from_spec(spec)
 
 
-def test_initialise_from_csv_uses_instance_cache(monkeypatch: MonkeyPatch) -> None:
-    """initialise_from_csv should populate only the receiving factory instance."""
+def test_initialise_uses_instance_cache(monkeypatch: MonkeyPatch) -> None:
+    """initialise should populate only the receiving factory instance."""
+
     product = _make_product("TEST")
 
-    def fake_parse_futures_products_csv(_: str) -> list[FuturesProduct]:
+    def fake_build_futures_products(_: Path, source: str) -> list[FuturesProduct]:
+        assert source == "csv"
         return [product]
 
     monkeypatch.setattr(
-        "mxm.refdata.services.futures_product_factory.parse_futures_products_csv",
-        fake_parse_futures_products_csv,
+        "mxm.refdata.services.futures_product_factory.build_futures_products",
+        fake_build_futures_products,
     )
 
     factory_a = FuturesProductFactory()
@@ -168,25 +172,27 @@ def test_initialise_from_csv_uses_instance_cache(monkeypatch: MonkeyPatch) -> No
     assert factory_b.get("TEST") is None
 
 
-def test_from_config_data_initialises_factory_from_configured_csv(
+def test_from_config_data_initialises_factory_from_configured_source(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """from_config_data should create a factory initialised from configured CSV."""
+    """from_config_data should create a factory initialised from configured source."""
+
     product = _make_product("TEST")
 
-    def fake_parse_futures_products_csv(csv_file_path: str) -> list[FuturesProduct]:
-        assert csv_file_path == "/tmp/products.csv"
+    def fake_build_futures_products(path: Path, source: str) -> list[FuturesProduct]:
+        assert str(path) == "/tmp/products"
+        assert source == "json"
         return [product]
 
     monkeypatch.setattr(
-        "mxm.refdata.services.futures_product_factory.parse_futures_products_csv",
-        fake_parse_futures_products_csv,
+        "mxm.refdata.services.futures_product_factory.build_futures_products",
+        fake_build_futures_products,
     )
 
     config: RefDataConfigData = {
         "SQL_DB_URL": "sqlite:///:memory:",
         "REFDATA_DB_MODE": "buildable",
-        "REFDATA_FUTURES_PRODUCTS_CSV_PATH": "/tmp/products.csv",
+        "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": "/tmp/products",
         "REFDATA_CONTRACT_START_DATE": "1980-01-01",
         "REFDATA_CONTRACT_END_DATE": "2046-12-31",
     }

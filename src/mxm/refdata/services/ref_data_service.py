@@ -104,7 +104,7 @@ class RefDataService:
 
     def setup_instruments(
         self,
-        csv_file_path: str | None = None,
+        json_root: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> None:
@@ -135,30 +135,34 @@ class RefDataService:
         self.initialise_periods(start_date=start_date, end_date=end_date)
         self.initialise_period_cycles()
         # Step 2: Initialise futures products from CSV
-        self.initialise_futures_products(csv_file_path=csv_file_path)
+        self.initialise_futures_products(json_root=json_root)
 
         # Step 3: Generate and store contracts for each product
         self.initialise_futures_contracts(start_date=start_date, end_date=end_date)
 
         logging.info("Full instrument setup completed successfully.")
 
-    def initialise_futures_products(self, csv_file_path: str | None = None) -> None:
+    def initialise_futures_products(self, json_root: str | None = None) -> None:
         """
-        Initialize the database with futures products from a CSV file.
+        Initialize the database with futures products from JSON source.
 
         Args:
-            csv_file_path (Optional[str]): Path to the CSV file containing futures product definitions.
-                                        If None, uses the default path from config.
+            json_root (Optional[str]):
+                Path to the JSON directory containing futures product definitions.
+                If None, uses the default path from config.
 
         Raises:
             ValueError: If the database is not empty.
         """
+
         if not self.is_table_empty(FuturesProductORM):
             raise ValueError(
                 "Database already contains products. Run `reset_database()` first."
             )
-        csv_path = csv_file_path or self.config["REFDATA_FUTURES_PRODUCTS_CSV_PATH"]
-        products = self.product_factory.initialise_from_csv(csv_path)
+
+        root = json_root or self.config["REFDATA_FUTURES_PRODUCTS_JSON_ROOT"]
+
+        products = self.product_factory.initialise_from_json(root)
 
         with self.session_manager.db_session_scope() as session:
             for product in products:

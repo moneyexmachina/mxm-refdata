@@ -45,7 +45,7 @@ def refdata_config() -> RefDataConfigData:
     return {
         "SQL_DB_URL": "sqlite:///:memory:",
         "REFDATA_DB_MODE": "buildable",
-        "REFDATA_FUTURES_PRODUCTS_CSV_PATH": "/tmp/products.csv",
+        "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": "/tmp/products",
         "REFDATA_CONTRACT_START_DATE": "2000-01-02",
         "REFDATA_CONTRACT_END_DATE": "2046-12-31",
     }

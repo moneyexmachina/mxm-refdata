@@ -27,10 +27,11 @@ from mxm.refdata.services.ref_data_service import RefDataService
 @pytest.fixture(scope="module")
 def refdata_config() -> RefDataConfigData:
     """Provide fully materialised refdata config for service tests."""
+
     return {
         "SQL_DB_URL": "sqlite:///:memory:",
         "REFDATA_DB_MODE": "buildable",
-        "REFDATA_FUTURES_PRODUCTS_CSV_PATH": "/tmp/products.csv",
+        "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": "/tmp/products",
         "REFDATA_CONTRACT_START_DATE": "2000-01-01",
         "REFDATA_CONTRACT_END_DATE": "2045-12-31",
     }
@@ -95,11 +96,10 @@ def ref_data_service(
 ) -> RefDataService:
     """Provide a configured RefDataService instance.
 
-    Product factory construction reads the configured CSV path, so the CSV parser
-    is patched before service construction.
+    Product factory construction reads the configured path, so the futures product parser is patched before service construction.
     """
     mocker.patch(
-        "mxm.refdata.services.futures_product_factory.parse_futures_products_csv",
+        "mxm.refdata.services.futures_product_factory.build_futures_products",
         return_value=futures_products,
     )
 
@@ -123,7 +123,7 @@ def test_from_config_data_constructs_configured_service(
 ) -> None:
     """from_config_data should construct a service from explicit dependencies."""
     mocker.patch(
-        "mxm.refdata.services.futures_product_factory.parse_futures_products_csv",
+        "mxm.refdata.services.futures_product_factory.build_futures_products",
         return_value=futures_products,
     )
 
@@ -282,7 +282,7 @@ def test_setup_instruments_uses_configured_default_dates(
         end_date=date(2045, 12, 31),
     )
     initialise_period_cycles.assert_called_once_with()
-    initialise_futures_products.assert_called_once_with(csv_file_path=None)
+    initialise_futures_products.assert_called_once_with(json_root=None)
     initialise_futures_contracts.assert_called_once_with(
         start_date=date(2000, 1, 1),
         end_date=date(2045, 12, 31),

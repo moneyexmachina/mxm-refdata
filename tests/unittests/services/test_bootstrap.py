@@ -61,15 +61,16 @@ class DummyRefDataService:
         self.setup_instruments_calls += 1
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def refdata_config() -> RefDataConfigData:
-    """Return fully materialised refdata config for bootstrap tests."""
+    """Provide fully materialised refdata config for service tests."""
+
     return {
         "SQL_DB_URL": "sqlite:///:memory:",
         "REFDATA_DB_MODE": "buildable",
-        "REFDATA_FUTURES_PRODUCTS_CSV_PATH": "/tmp/products.csv",
-        "REFDATA_CONTRACT_START_DATE": "1980-01-01",
-        "REFDATA_CONTRACT_END_DATE": "2046-12-31",
+        "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": "/tmp/products",
+        "REFDATA_CONTRACT_START_DATE": "2000-01-01",
+        "REFDATA_CONTRACT_END_DATE": "2045-12-31",
     }
 
 
@@ -148,7 +149,7 @@ def test_ensure_refdata_ready_noops_when_products_exist(
     cfg: RefDataConfigData = {
         "SQL_DB_URL": "sqlite:///:memory:",
         "REFDATA_DB_MODE": "managed",
-        "REFDATA_FUTURES_PRODUCTS_CSV_PATH": "/tmp/products.csv",
+        "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": "/tmp/products",
         "REFDATA_CONTRACT_START_DATE": "1980-01-01",
         "REFDATA_CONTRACT_END_DATE": "2046-12-31",
     }
@@ -167,7 +168,7 @@ def test_ensure_refdata_ready_raises_in_managed_mode_when_empty(
     cfg: RefDataConfigData = {
         "SQL_DB_URL": "sqlite:///:memory:",
         "REFDATA_DB_MODE": "managed",
-        "REFDATA_FUTURES_PRODUCTS_CSV_PATH": "/tmp/products.csv",
+        "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": "/tmp/products",
         "REFDATA_CONTRACT_START_DATE": "1980-01-01",
         "REFDATA_CONTRACT_END_DATE": "2046-12-31",
     }
@@ -188,7 +189,7 @@ def test_ensure_refdata_ready_builds_when_empty_and_buildable(
     cfg: RefDataConfigData = {
         "SQL_DB_URL": "sqlite:///:memory:",
         "REFDATA_DB_MODE": "buildable",
-        "REFDATA_FUTURES_PRODUCTS_CSV_PATH": "/tmp/products.csv",
+        "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": "/tmp/products",
         "REFDATA_CONTRACT_START_DATE": "1980-01-01",
         "REFDATA_CONTRACT_END_DATE": "2046-12-31",
     }

@@ -1,4 +1,4 @@
-"""DataClass for a futures product."""
+from __future__ import annotations
 
 from dataclasses import dataclass
 
@@ -10,28 +10,31 @@ from mxm.refdata.models.units import ProductUnit
 
 @dataclass(frozen=True)
 class FuturesProduct:
-    """Represents a tradeable futures product."""
+    """Represents a tradeable futures product.
 
-    product_id: str  # Internal product code (aligned with venue's default code)
-    venue: str  # The venue (e.g., exchange or counterparty) offering the product
-    description: str  # Long-form name and/or description
-    currency: Currency  # Currency of the product (from Currency enum)
-    unit: ProductUnit  # Physical unit (from ProductUnit enum)
-    contract_size: float  # Number of physical units per contract
-    valid_period_rule: (
-        str  # Rule for determining valid trading periods (e.g., "FGHJKMNQUVXZ")
-    )
-    listing_rule: (
-        str  # Rule for determining available contracts (e.g., "monthly for all months")
-    )
+    This is the canonical domain reconstruction boundary.
+
+    `from_dict` consumes a fully normalised JSON-compatible object
+    (typically produced by CSV or JSON loaders) and converts it into
+    a strongly typed domain model.
+
+    This is the ONLY supported entry point for external reconstruction.
+    """
+
+    product_id: str
+    venue: str
+    description: str
+    currency: Currency
+    unit: ProductUnit
+    contract_size: float
+    valid_period_rule: str
+    listing_rule: str
     period_types: tuple[PeriodType, ...]
-    settlement: SettlementMethod  # Settlement type (physical, financial, etc.)
-    last_trading_rule: str  # Rule for determining last trading day (e.g., "3rd last business day of delivery month")
-    expiry_rule: str  # Rule for determining contract expiry (e.g., "3rd Friday of delivery month")
-    trading_calendar: (
-        str  # Placeholder for the trading calendar rule (e.g. CME default)
-    )
-    trading_hours: str | None = None  # String representation of trading hours
+    settlement: SettlementMethod
+    last_trading_rule: str
+    expiry_rule: str
+    trading_calendar: str
+    trading_hours: str | None = None
     tick_size: float | None = None
     tick_value: float | None = None
     initial_margin: float | None = None
