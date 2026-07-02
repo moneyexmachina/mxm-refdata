@@ -99,7 +99,7 @@ def ref_data_service(
     Product factory construction reads the configured path, so the futures product parser is patched before service construction.
     """
     mocker.patch(
-        "mxm.refdata.services.futures_product_factory.build_futures_products",
+        "mxm.refdata.factories.futures_product_factory.build_futures_products",
         return_value=futures_products,
     )
 
@@ -123,7 +123,7 @@ def test_from_config_data_constructs_configured_service(
 ) -> None:
     """from_config_data should construct a service from explicit dependencies."""
     mocker.patch(
-        "mxm.refdata.services.futures_product_factory.build_futures_products",
+        "mxm.refdata.factories.futures_product_factory.build_futures_products",
         return_value=futures_products,
     )
 

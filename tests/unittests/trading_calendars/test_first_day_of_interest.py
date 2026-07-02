@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from mxm.refdata.services.period_factory import PeriodFactory
+from mxm.refdata.factories import PeriodFactory
 from mxm.refdata.trading_calendars.first_day_of_interest import (
     calculate_first_day_of_interest,
 )

@@ -3,10 +3,10 @@ import json
 from importlib.resources import files
 from typing import NotRequired, TypedDict, cast
 
+from mxm.refdata.factories.period_factory import PeriodFactory
 from mxm.refdata.models.periods import Period
 from mxm.refdata.models.reference_events import ReferenceEvent
 from mxm.refdata.models.weekdays import Weekday
-from mxm.refdata.services.period_factory import PeriodFactory
 from mxm.refdata.trading_calendars.nth_business_day import (
     get_nth_business_day_of_period,
 )

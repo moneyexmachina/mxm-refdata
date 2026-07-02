@@ -2,7 +2,7 @@ import datetime
 
 import pytest
 
-from mxm.refdata.services.period_factory import PeriodFactory
+from mxm.refdata.factories.period_factory import PeriodFactory
 from mxm.refdata.trading_calendars.last_trading_day import calculate_last_trading_day
 from mxm.refdata.trading_calendars.trading_calendar import TradingCalendar
 

@@ -7,6 +7,11 @@ from sqlalchemy.orm import DeclarativeBase
 
 from mxm.refdata.config import RefDataConfigData
 from mxm.refdata.database.sql_session_manager import SQLSessionManager
+from mxm.refdata.factories import (
+    FuturesContractFactory,
+    FuturesProductFactory,
+    PeriodFactory,
+)
 from mxm.refdata.mappings import (
     futures_contract_to_orm,
     futures_product_from_orm,
@@ -14,7 +19,7 @@ from mxm.refdata.mappings import (
     period_from_orm,
     period_to_orm,
 )
-from mxm.refdata.models import FuturesContract, FuturesProduct, Period
+from mxm.refdata.models import FuturesContract, FuturesProduct, Period, PeriodType
 from mxm.refdata.models.orm.futures_contracts import FuturesContractORM
 from mxm.refdata.models.orm.futures_products import FuturesProductORM
 from mxm.refdata.models.orm.period_cycles import (
@@ -23,10 +28,6 @@ from mxm.refdata.models.orm.period_cycles import (
 )
 from mxm.refdata.models.orm.periods import PeriodORM
 from mxm.refdata.models.period_cycles import CycleInstanceKind
-from mxm.refdata.models.periods import PeriodType
-from mxm.refdata.services.futures_contract_factory import FuturesContractFactory
-from mxm.refdata.services.futures_product_factory import FuturesProductFactory
-from mxm.refdata.services.period_factory import PeriodFactory
 from mxm.refdata.trading_calendars.trading_calendar import TradingCalendar
 
 logging.basicConfig(level=logging.INFO)

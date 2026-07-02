@@ -8,14 +8,14 @@ import pytest
 from pytest import MonkeyPatch
 
 from mxm.refdata.config import RefDataConfigData
+from mxm.refdata.factories import (
+    FuturesProductFactory,
+    FuturesProductSpec,
+)
 from mxm.refdata.models.currencies import Currency
 from mxm.refdata.models.periods import PeriodType
 from mxm.refdata.models.products.futures_product import FuturesProduct, SettlementMethod
 from mxm.refdata.models.units import ProductUnit
-from mxm.refdata.services.futures_product_factory import (
-    FuturesProductFactory,
-    FuturesProductSpec,
-)
 
 
 def _make_product(product_id: str = "TEST") -> FuturesProduct:
@@ -158,7 +158,7 @@ def test_initialise_uses_instance_cache(monkeypatch: MonkeyPatch) -> None:
         return [product]
 
     monkeypatch.setattr(
-        "mxm.refdata.services.futures_product_factory.build_futures_products",
+        "mxm.refdata.factories.futures_product_factory.build_futures_products",
         fake_build_futures_products,
     )
 
@@ -185,7 +185,7 @@ def test_from_config_data_initialises_factory_from_configured_source(
         return [product]
 
     monkeypatch.setattr(
-        "mxm.refdata.services.futures_product_factory.build_futures_products",
+        "mxm.refdata.factories.futures_product_factory.build_futures_products",
         fake_build_futures_products,
     )
 

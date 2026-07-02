@@ -2,7 +2,7 @@ import datetime
 
 import pytest
 
-from mxm.refdata.services.period_factory import PeriodFactory
+from mxm.refdata.factories import PeriodFactory
 from mxm.refdata.trading_calendars.nth_calendar_day_of_period import (
     get_nth_calendar_day_of_period,
 )
