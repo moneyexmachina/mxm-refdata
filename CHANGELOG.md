@@ -16,6 +16,25 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 - (none)
 
 ---
+## v0.4.1 — 2026-07-01
+
+### Added
+- Full support for sourcing futures product definitions from the dedicated `mxm-refdata-source` repository (JSON-based), replacing the previous CSV canonical source.
+- Recursive JSON parsing for multiple product files, including provenance and parsed rules.
+- `FuturesProductFactory` updated to initialise from JSON by default.
+- Equivalence tests added to validate consistency between legacy CSV snapshots and JSON ingestion.
+- CLI and Python API updated to operate on JSON-sourced reference data.
+
+### Changed
+- `RefDataConfigData` now uses `REFDATA_FUTURES_PRODUCTS_JSON_ROOT` instead of CSV path.
+- Deprecated CSV ingestion path in production; CSV retained only for demos and testing.
+- Refactored factory, service, and API layers to remove implicit CSV defaults.
+- Updated all tests and fixtures to reflect JSON-based configuration.
+
+### Fixed
+- Resolved runtime path resolution issues by ensuring JSON root is correctly derived from config and `RuntimeContext`.
+- Eliminated inconsistent object graph construction across CLI, API, and services.
+
 ## [0.4.0] - 2026-06-23
 
 ### Added

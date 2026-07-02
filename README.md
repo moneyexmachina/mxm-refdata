@@ -11,7 +11,7 @@ Reference-data ontology and contract-generation framework for the Money Ex Machi
 
 The package is intended to answer questions such as:
 
-```text
+```
 What futures products exist?
 
 What contracts should exist for a given product?
@@ -31,13 +31,11 @@ without depending on any market-data vendor.
 
 For example:
 
-```text
+```
 cme_gbp_futures.Mar-2032
 ```
 
-is not stored as a static object.
-
-Instead it is deterministically derived from:
+is not stored as a static object. Instead it is deterministically derived from:
 
 - a product specification,
 - listing rules,
@@ -46,13 +44,11 @@ Instead it is deterministically derived from:
 - trading-calendar semantics,
 - and lifecycle rules.
 
-This allows downstream systems to reason about contracts independently of any particular data vendor.
-
-Observed prices, quotes, trades, and exchange events belong to separate packages such as `mxm-marketdata`.
+This allows downstream systems to reason about contracts independently of any particular data vendor. Observed prices, quotes, trades, and exchange events belong to separate packages such as `mxm-marketdata`.
 
 ## Architecture
 
-`mxm-refdata` consists of four conceptual layers.
+`mxm-refdata` consists of three conceptual layers.
 
 ### Product specifications
 
@@ -65,11 +61,33 @@ Human-authored definitions describing:
 - trading calendars,
 - and valid period structures.
 
-Currently these specifications are sourced from bundled CSV files.
+**Canonical source:** All specifications are now sourced from the dedicated **`mxm-refdata-source`** repository as JSON files, one per product, each containing full provenance metadata and parsed rules.
 
-Future versions are expected to source them from a dedicated `mxm-refdata-source` repository.
+**Legacy CSV snapshots** are retained only for demonstration and testing purposes; they are not used in the production pipeline.
 
-### Deterministic generation
+### Composition and object graph
+
+The **composition layer** constructs the in-memory object graph representing the MXM reference data system:
+
+- factories,
+- registries,
+- DB connections,
+- caches,
+- and query interfaces.
+
+This object graph is encapsulated in the `RefData` class and is the canonical runtime representation of the system. The composition layer is implemented in `composition.py` (or similar) and receives a fully resolved `RuntimeContext` from `mxm-runtime`.
+
+### Application entrypoints
+
+Applications invoke the composition layer to operate the system:
+
+- `cli.py` for command-line interaction
+- `api.py` as a query façade (read-only access)
+- future batch or service scripts
+
+Each entrypoint leverages the same composed `RefData` object graph; the graph is never independently reconstructed per entrypoint.
+
+## Deterministic generation
 
 Generation services construct:
 
@@ -80,83 +98,16 @@ Generation services construct:
 - first day of interest,
 - and last trading day.
 
-### Materialised reference store
+The generation pipeline consumes JSON definitions from `mxm-refdata-source`, ensuring reproducibility and determinism.
+
+## Materialised reference store
 
 Generated entities are persisted into a reference-data database.
 
-Current implementation:
-
-```text
-SQLite
-```
-
-Future deployments may use PostgreSQL through the same service layer.
-
-### Query API
-
-The materialised reference universe is exposed through:
-
-- `RefDataAPI`
-- operational CLI commands
-- downstream MXM services
-
-## Design Principles
-
-### Explicit construction
-
-`mxm-refdata` no longer discovers configuration implicitly.
-
-Services are constructed from fully resolved configuration data.
-
-```python
-config = normalise_refdata_config_data(...)
-api = RefDataAPI.from_config_data(config)
-```
-
-rather than:
-
-```python
-api = RefDataAPI()
-```
-
-### Derived state
-
-The reference database is deterministic derived state.
-
-Given:
-
-- product specifications,
-- lifecycle rules,
-- trading-calendar semantics,
-- and a contract materialisation horizon,
-
-the database can be recreated from scratch.
-
-### Separation of concerns
-
-The package distinguishes between:
-
-```text
-Product definitions
-Contract generation
-Trading-calendar access
-Reference-data storage
-Query APIs
-```
-
-while exposing a unified operational interface.
-
-## Installation
-
-```bash
-git clone https://github.com/moneyexmachina/mxm-refdata.git
-cd mxm-refdata
-poetry install
-```
+- Current implementation: **SQLite**
+- Future deployments: PostgreSQL through the same service layer
 
 ## CLI Usage
-
-The CLI is intentionally explicit.
 
 Create a reference database:
 
@@ -188,77 +139,59 @@ mxm-refdata smokecheck \
   --db-url sqlite:////tmp/mxm-refdata.db
 ```
 
-Future MXM applications are expected to provide higher-level runtime configuration so that users can invoke commands without repeatedly specifying database locations.
+> The CLI operates on the JSON-sourced reference universe. CSVs are used only for demos or testing.
 
 ## Python API
 
 ```python
 from datetime import date
-
 from mxm.refdata import RefDataAPI
 
 api = RefDataAPI.from_config_data(
     {
         "SQL_DB_URL": "sqlite:////tmp/mxm-refdata.db",
+        "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": "/home/mxm/mxm-refdata-source/products/futures",
     }
 )
 
 products = api.get_all_products()
 
-contracts = api.get_contracts_for_product(
-    "cme_gbp_futures",
-)
+contracts = api.get_contracts_for_product("cme_gbp_futures")
 
-active_contracts = api.get_active_contracts(
-    as_of_date=date(2026, 5, 1),
-)
+active_contracts = api.get_active_contracts(as_of_date=date(2026, 5, 1))
 ```
 
 ## Configuration
 
-The primary configuration fields are:
+Primary configuration fields:
 
-```text
+```
 SQL_DB_URL
-
 REFDATA_DB_MODE
-
+REFDATA_FUTURES_PRODUCTS_JSON_ROOT
 REFDATA_CONTRACT_START_DATE
 REFDATA_CONTRACT_END_DATE
 ```
 
 ### Buildable mode
 
-In buildable mode:
-
-```text
+```
 REFDATA_DB_MODE=buildable
 ```
 
-the database is treated as deterministic derived state.
-
-If the database is empty, `mxm-refdata` may automatically materialise the configured reference universe.
-
-This mode is intended for:
-
-- development,
-- CI,
-- local experimentation,
-- and bootstrap workflows.
+- Database treated as deterministic derived state
+- Automatic materialisation allowed if empty
+- Intended for development, CI, local experimentation, bootstrap
 
 ### Managed mode
 
-In managed mode:
-
-```text
+```
 REFDATA_DB_MODE=managed
 ```
 
-automatic materialisation is disabled.
-
-The reference database must be created and maintained explicitly.
-
-This mode is intended for operational deployments.
+- Automatic materialisation disabled
+- Reference database must be created and maintained explicitly
+- Intended for operational deployments
 
 ## Development
 
@@ -268,7 +201,7 @@ Install dependencies:
 poetry install
 ```
 
-Run the full validation suite:
+Run full validation suite:
 
 ```bash
 make check
@@ -282,7 +215,7 @@ mxm-foundry check .
 
 ## Documentation
 
-```text
+```
 docs/design.md
 ```
 
@@ -319,3 +252,4 @@ docs/design.md
 ## License
 
 MIT License. See `LICENSE`.
+
