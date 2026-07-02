@@ -19,21 +19,23 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 ## v0.4.1 — 2026-07-01
 
 ### Added
-- Full support for sourcing futures product definitions from the dedicated `mxm-refdata-source` repository (JSON-based), replacing the previous CSV canonical source.
+- Support for sourcing futures product definitions from the dedicated `mxm-refdata-source` repository (JSON-based) instead of CSV.
 - Recursive JSON parsing for multiple product files, including provenance and parsed rules.
-- `FuturesProductFactory` updated to initialise from JSON by default.
+- `FuturesProductFactory` method updated to initialise from JSON.
 - Equivalence tests added to validate consistency between legacy CSV snapshots and JSON ingestion.
-- CLI and Python API updated to operate on JSON-sourced reference data.
+- CLI and Python API updated to consume JSON-sourced reference data.
 
 ### Changed
 - `RefDataConfigData` now uses `REFDATA_FUTURES_PRODUCTS_JSON_ROOT` instead of CSV path.
-- Deprecated CSV ingestion path in production; CSV retained only for demos and testing.
-- Refactored factory, service, and API layers to remove implicit CSV defaults.
-- Updated all tests and fixtures to reflect JSON-based configuration.
+- Deprecated CSV ingestion in production; CSV retained only for demos and testing.
+- Refactored factory and API layers to remove references to CSV as a canonical source.
+- Tests and fixtures updated to use JSON root paths.
 
 ### Fixed
-- Resolved runtime path resolution issues by ensuring JSON root is correctly derived from config and `RuntimeContext`.
-- Eliminated inconsistent object graph construction across CLI, API, and services.
+- Runtime path resolution for JSON ingestion clarified via configuration.
+- Minor parsing fixes to ensure proper type handling from JSON files.
+
+> **Note:** Object graph construction for CLI, API, and runtime composition, as well as fully integrated mxm-runtime config resolution, remains to be implemented. This will be addressed in **session_48f**.
 
 ## [0.4.0] - 2026-06-23
 
