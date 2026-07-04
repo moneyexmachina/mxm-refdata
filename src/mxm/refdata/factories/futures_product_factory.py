@@ -135,7 +135,7 @@ class FuturesProductFactory:
     def initialise_from_json(self, root_dir: str) -> list[FuturesProduct]:
         """Load products from JSON directory and intern them into cache."""
 
-        products = build_futures_products(Path(root_dir), source="json")
+        products = build_futures_products(Path(root_dir).expanduser(), source="json")
 
         return [self.intern(p) for p in products]
 
