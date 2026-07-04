@@ -1,631 +1,207 @@
-"""Focused unit tests for RefDataAPI."""
+"""Tests for the read-only RefDataAPI façade."""
 
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
+from unittest.mock import Mock
 
-import pytest
-from pytest import MonkeyPatch
 from pytest_mock import MockerFixture
 
-from mxm.refdata.api import RefDataAPI, RefDataLookupError
-from mxm.refdata.config import RefDataConfigData
-from mxm.refdata.database.sql_session_manager import SQLSessionManager
-from mxm.refdata.mappings import (
-    futures_contract_to_orm,
-    futures_product_to_orm,
-    period_to_orm,
-)
-from mxm.refdata.models.contracts.futures_contract import FuturesContract
-from mxm.refdata.models.currencies import Currency
-from mxm.refdata.models.periods import Period, PeriodType
-from mxm.refdata.models.products.futures_product import FuturesProduct, SettlementMethod
-from mxm.refdata.models.units import ProductUnit
+from mxm.refdata.api import RefDataAPI
 
 
-@pytest.fixture(scope="module")
-def db_session_manager() -> SQLSessionManager:
-    """Provide an SQLSessionManager using an in-memory SQLite database."""
-    session_manager = SQLSessionManager.from_db_url("sqlite:///:memory:")
-    session_manager.init_db()
-    return session_manager
+def test_from_runtime_context_builds_refdata_api(mocker: MockerFixture) -> None:
+    """from_runtime_context should compose RefData and wrap it."""
+    ctx = Mock()
+    refdata = Mock()
 
-
-@pytest.fixture(autouse=True)
-def reset_db(db_session_manager: SQLSessionManager) -> None:
-    """Ensure a clean database state before each test."""
-    db_session_manager.drop_db()
-    db_session_manager.init_db()
-
-
-@pytest.fixture
-def refdata_config() -> RefDataConfigData:
-    """Provide explicit RefDataAPI config for unit tests."""
-    return {
-        "SQL_DB_URL": "sqlite:///:memory:",
-        "REFDATA_DB_MODE": "buildable",
-        "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": "/tmp/products",
-        "REFDATA_CONTRACT_START_DATE": "2000-01-02",
-        "REFDATA_CONTRACT_END_DATE": "2046-12-31",
-    }
-
-
-def _mock_ensure_refdata_ready(*_args: object, **_kwargs: object) -> None:
-    _ = _args
-    _ = _kwargs
-    return None
-
-
-@pytest.fixture
-def ref_data_api(
-    db_session_manager: SQLSessionManager,
-    refdata_config: RefDataConfigData,
-    monkeypatch: MonkeyPatch,
-) -> RefDataAPI:
-    """Create a RefDataAPI instance with explicit dependencies."""
-    monkeypatch.setattr(
-        "mxm.refdata.api.ensure_refdata_ready",
-        _mock_ensure_refdata_ready,
-    )
-    return RefDataAPI(
-        config=refdata_config,
-        session_manager=db_session_manager,
+    build_refdata = mocker.patch(
+        "mxm.refdata.api.build_refdata",
+        return_value=refdata,
     )
 
+    api = RefDataAPI.from_runtime_context(ctx)
 
-@pytest.fixture
-def mock_data(db_session_manager: SQLSessionManager) -> None:
-    """Populate the database with one product, one period, and one contract."""
-    with db_session_manager.db_session_scope() as session:
-        product = FuturesProduct(
-            product_id="gold_fut",
-            venue="CME",
-            description="Gold Futures",
-            currency=Currency.USD,
-            unit=ProductUnit.TROY_OUNCE,
-            contract_size=100.0,
-            valid_period_rule="FGHJKMNQUVXZ",
-            listing_rule="Monthly",
-            period_types=(PeriodType.MONTH,),
-            settlement=SettlementMethod.PHYSICAL,
-            last_trading_rule="3rd last business day of the delivery month",
-            expiry_rule="End of Month",
-            trading_calendar="Default Calendar",
-            tick_size=0.1,
-            tick_value=10.0,
-        )
-        session.add(futures_product_to_orm(product))
-
-        period = Period(
-            period_id="Jan-2025",
-            period_type=PeriodType.MONTH,
-            first_date=date(2025, 1, 1),
-            last_date=date(2025, 1, 31),
-        )
-        session.add(period_to_orm(period))
-
-        contract = FuturesContract(
-            product_id="gold_fut",
-            period_id="Jan-2025",
-            contract_id="gold_fut.Jan-2025",
-            contract_size=100.0,
-            currency=Currency.USD,
-            unit=ProductUnit.TROY_OUNCE,
-            trading_calendar="Default Calendar",
-            first_day_of_interest=date(2025, 1, 1),
-            last_trading_day=date(2025, 1, 29),
-        )
-        session.add(futures_contract_to_orm(contract))
+    assert isinstance(api, RefDataAPI)
+    build_refdata.assert_called_once_with(ctx)
 
 
-@pytest.mark.usefixtures("mock_data")
-def test_get_product_by_id(ref_data_api: RefDataAPI) -> None:
-    product = ref_data_api.get_product_by_id("gold_fut")
+def test_check_ready_delegates_to_refdata() -> None:
+    refdata = Mock()
+    api = RefDataAPI(refdata)
 
-    assert product is not None
-    assert product.product_id == "gold_fut"
+    api.check_ready()
 
-
-@pytest.mark.usefixtures("mock_data")
-def test_get_contracts_for_date(ref_data_api: RefDataAPI) -> None:
-    contracts = ref_data_api.get_contracts_for_date(date(2025, 1, 15))
-
-    assert len(contracts) == 1
-    assert contracts[0].contract_id == "gold_fut.Jan-2025"
+    refdata.check_ready.assert_called_once_with()
 
 
-@pytest.mark.usefixtures("mock_data")
-def test_caching_behavior(ref_data_api: RefDataAPI, mocker: MockerFixture) -> None:
-    spy = mocker.spy(ref_data_api.session_manager, "db_session_scope")
+def test_maybe_get_contract_by_id_delegates_to_refdata() -> None:
+    refdata = Mock()
+    refdata.maybe_get_contract_by_id.return_value = None
+    api = RefDataAPI(refdata)
 
-    ref_data_api.get_product_by_id("gold_fut")
-    assert spy.call_count == 1
-
-    ref_data_api.get_product_by_id("gold_fut")
-    assert spy.call_count == 1
+    assert api.maybe_get_contract_by_id("missing") is None
+    refdata.maybe_get_contract_by_id.assert_called_once_with("missing")
 
 
-def test_auto_bootstrap_buildable(
-    tmp_path: Path,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    db_path = tmp_path / "refdata" / "refdata.db"
-    called = False
+def test_get_contract_by_id_delegates_to_refdata() -> None:
+    contract = Mock()
+    refdata = Mock()
+    refdata.get_contract_by_id.return_value = contract
+    api = RefDataAPI(refdata)
 
-    def fake_build_refdata(
-        *, config: RefDataConfigData, session_manager: SQLSessionManager
-    ) -> None:
-        _ = config
-        _ = session_manager
-        nonlocal called
-        called = True
-        session_manager.init_db()
-
-    monkeypatch.setattr(
-        "mxm.refdata.services.bootstrap.build_refdata",
-        fake_build_refdata,
-    )
-
-    api = RefDataAPI.from_config_data(
-        {
-            "SQL_DB_URL": f"sqlite:///{db_path}",
-            "REFDATA_DB_MODE": "buildable",
-        }
-    )
-
-    products = api.get_all_products()
-
-    assert products == []
-    assert called
-    assert db_path.exists()
+    assert api.get_contract_by_id("contract_id") is contract
+    refdata.get_contract_by_id.assert_called_once_with("contract_id")
 
 
-def test_auto_bootstrap_refused_managed(tmp_path: Path) -> None:
-    from mxm.refdata.services.bootstrap import RefDataNotInitialisedError
+def test_get_contracts_by_id_delegates_to_refdata() -> None:
+    contracts = [Mock()]
+    refdata = Mock()
+    refdata.get_contracts_by_id.return_value = contracts
+    api = RefDataAPI(refdata)
 
-    db_path = tmp_path / "refdata" / "refdata.db"
-
-    api = RefDataAPI.from_config_data(
-        {
-            "SQL_DB_URL": f"sqlite:///{db_path}",
-            "REFDATA_DB_MODE": "managed",
-            "REFDATA_CONTRACT_START_DATE": "2000-01-02",
-        }
-    )
-
-    with pytest.raises(RefDataNotInitialisedError):
-        api.get_all_products()
+    assert api.get_contracts_by_id(["b", "a"]) == contracts
+    refdata.get_contracts_by_id.assert_called_once_with(["b", "a"])
 
 
-@pytest.fixture
-def mock_data_active_contracts(db_session_manager: SQLSessionManager) -> None:
-    with db_session_manager.db_session_scope() as session:
-        gold = FuturesProduct(
-            product_id="gold_fut",
-            venue="CME",
-            description="Gold Futures",
-            currency=Currency.USD,
-            unit=ProductUnit.TROY_OUNCE,
-            contract_size=100.0,
-            valid_period_rule="FGHJKMNQUVXZ",
-            listing_rule="Monthly",
-            period_types=(PeriodType.MONTH,),
-            settlement=SettlementMethod.PHYSICAL,
-            last_trading_rule="3rd last business day of the delivery month",
-            expiry_rule="End of Month",
-            trading_calendar="Default Calendar",
-            tick_size=0.1,
-            tick_value=10.0,
-        )
-        corn = FuturesProduct(
-            product_id="corn_fut",
-            venue="CBOT",
-            description="Corn Futures",
-            currency=Currency.USD,
-            unit=ProductUnit.BUSHEL,
-            contract_size=5000.0,
-            valid_period_rule="HKNUZ",
-            listing_rule="Monthly",
-            period_types=(PeriodType.MONTH,),
-            settlement=SettlementMethod.PHYSICAL,
-            last_trading_rule="Business day prior to 15th calendar day",
-            expiry_rule="End of Month",
-            trading_calendar="Default Calendar",
-            tick_size=0.25,
-            tick_value=12.5,
-        )
-        session.add(futures_product_to_orm(gold))
-        session.add(futures_product_to_orm(corn))
+def test_get_active_contracts_delegates_to_refdata() -> None:
+    refdata = Mock()
+    refdata.get_active_contracts.return_value = []
+    api = RefDataAPI(refdata)
+    as_of = date(2025, 6, 18)
 
-        jan_2025 = Period(
-            period_id="Jan-2025",
-            period_type=PeriodType.MONTH,
-            first_date=date(2025, 1, 1),
-            last_date=date(2025, 1, 31),
-        )
-        feb_2025 = Period(
-            period_id="Feb-2025",
-            period_type=PeriodType.MONTH,
-            first_date=date(2025, 2, 1),
-            last_date=date(2025, 2, 28),
-        )
-        session.add(period_to_orm(jan_2025))
-        session.add(period_to_orm(feb_2025))
-
-        contracts = [
-            FuturesContract(
-                product_id="gold_fut",
-                period_id="Jan-2025",
-                contract_id="gold_fut.Jan-2025",
-                contract_size=100.0,
-                currency=Currency.USD,
-                unit=ProductUnit.TROY_OUNCE,
-                trading_calendar="Default Calendar",
-                first_day_of_interest=date(2025, 1, 1),
-                last_trading_day=date(2025, 1, 29),
-            ),
-            FuturesContract(
-                product_id="gold_fut",
-                period_id="Feb-2025",
-                contract_id="gold_fut.Feb-2025",
-                contract_size=100.0,
-                currency=Currency.USD,
-                unit=ProductUnit.TROY_OUNCE,
-                trading_calendar="Default Calendar",
-                first_day_of_interest=date(2025, 1, 30),
-                last_trading_day=date(2025, 2, 26),
-            ),
-            FuturesContract(
-                product_id="corn_fut",
-                period_id="Jan-2025",
-                contract_id="corn_fut.Jan-2025",
-                contract_size=5000.0,
-                currency=Currency.USD,
-                unit=ProductUnit.BUSHEL,
-                trading_calendar="Default Calendar",
-                first_day_of_interest=date(2025, 1, 10),
-                last_trading_day=date(2025, 1, 20),
-            ),
-            FuturesContract(
-                product_id="corn_fut",
-                period_id="Feb-2025",
-                contract_id="corn_fut.Feb-2025",
-                contract_size=5000.0,
-                currency=Currency.USD,
-                unit=ProductUnit.BUSHEL,
-                trading_calendar="Default Calendar",
-                first_day_of_interest=date(2025, 2, 1),
-                last_trading_day=date(2025, 2, 10),
-            ),
-        ]
-
-        for contract in contracts:
-            session.add(futures_contract_to_orm(contract))
-
-
-@pytest.mark.usefixtures("mock_data_active_contracts")
-def test_get_active_contracts_semantics_and_boundaries(
-    ref_data_api: RefDataAPI,
-) -> None:
-    contracts = ref_data_api.get_active_contracts(
-        date(2025, 1, 1),
+    assert api.get_active_contracts(as_of, product_id="gold_fut") == []
+    refdata.get_active_contracts.assert_called_once_with(
+        as_of,
         product_id="gold_fut",
-    )
-    assert [contract.contract_id for contract in contracts] == ["gold_fut.Jan-2025"]
-
-    contracts = ref_data_api.get_active_contracts(
-        date(2025, 1, 29),
-        product_id="gold_fut",
-    )
-    assert [contract.contract_id for contract in contracts] == ["gold_fut.Jan-2025"]
-
-    contracts = ref_data_api.get_active_contracts(
-        date(2025, 1, 30),
-        product_id="corn_fut",
-    )
-    assert [contract.contract_id for contract in contracts] == []
-
-    contracts = ref_data_api.get_active_contracts(
-        date(2025, 1, 15),
-        product_id="corn_fut",
-    )
-    assert [contract.contract_id for contract in contracts] == ["corn_fut.Jan-2025"]
-
-
-@pytest.mark.usefixtures("mock_data_active_contracts")
-def test_get_active_contracts_product_id_filter(ref_data_api: RefDataAPI) -> None:
-    contracts = ref_data_api.get_active_contracts(
-        date(2025, 1, 15),
-        product_id="gold_fut",
+        product_ids=None,
     )
 
-    assert all(contract.product_id == "gold_fut" for contract in contracts)
-    assert [contract.contract_id for contract in contracts] == ["gold_fut.Jan-2025"]
+
+def test_get_all_products_delegates_to_refdata() -> None:
+    products = [Mock()]
+    refdata = Mock()
+    refdata.get_all_products.return_value = products
+    api = RefDataAPI(refdata)
+
+    assert api.get_all_products() == products
+    refdata.get_all_products.assert_called_once_with()
 
 
-@pytest.mark.usefixtures("mock_data_active_contracts")
-def test_get_active_contracts_product_ids_filter(ref_data_api: RefDataAPI) -> None:
-    contracts = ref_data_api.get_active_contracts(
-        date(2025, 1, 15),
-        product_ids=["gold_fut", "corn_fut"],
+def test_get_product_by_id_delegates_to_refdata() -> None:
+    product = Mock()
+    refdata = Mock()
+    refdata.get_product_by_id.return_value = product
+    api = RefDataAPI(refdata)
+
+    assert api.get_product_by_id("gold_fut") is product
+    refdata.get_product_by_id.assert_called_once_with("gold_fut")
+
+
+def test_get_contracts_for_product_delegates_to_refdata() -> None:
+    contracts = [Mock()]
+    refdata = Mock()
+    refdata.get_contracts_for_product.return_value = contracts
+    api = RefDataAPI(refdata)
+
+    assert api.get_contracts_for_product("gold_fut", period_type="MONTH") == contracts
+    refdata.get_contracts_for_product.assert_called_once_with(
+        "gold_fut",
+        period_type="MONTH",
     )
 
-    assert [contract.contract_id for contract in contracts] == [
-        "corn_fut.Jan-2025",
-        "gold_fut.Jan-2025",
-    ]
+
+def test_get_contracts_for_date_delegates_to_refdata() -> None:
+    contracts = [Mock()]
+    refdata = Mock()
+    refdata.get_contracts_for_date.return_value = contracts
+    api = RefDataAPI(refdata)
+    target = date(2025, 1, 15)
+
+    assert api.get_contracts_for_date(target) == contracts
+    refdata.get_contracts_for_date.assert_called_once_with(target)
 
 
-@pytest.mark.usefixtures("mock_data_active_contracts")
-def test_get_active_contracts_empty_product_ids_returns_empty(
-    ref_data_api: RefDataAPI,
-) -> None:
-    contracts = ref_data_api.get_active_contracts(
-        date(2025, 1, 15),
-        product_ids=[],
+def test_get_periods_delegates_to_refdata() -> None:
+    periods = [Mock()]
+    refdata = Mock()
+    refdata.get_periods.return_value = periods
+    api = RefDataAPI(refdata)
+
+    assert api.get_periods() == periods
+    refdata.get_periods.assert_called_once_with()
+
+
+def test_get_period_by_id_delegates_to_refdata() -> None:
+    period = Mock()
+    refdata = Mock()
+    refdata.get_period_by_id.return_value = period
+    api = RefDataAPI(refdata)
+
+    assert api.get_period_by_id("Jan-2025") is period
+    refdata.get_period_by_id.assert_called_once_with("Jan-2025")
+
+
+def test_get_periods_by_id_delegates_to_refdata() -> None:
+    periods = [Mock()]
+    refdata = Mock()
+    refdata.get_periods_by_id.return_value = periods
+    api = RefDataAPI(refdata)
+
+    assert api.get_periods_by_id(["Feb-2025", "Jan-2025"]) == periods
+    refdata.get_periods_by_id.assert_called_once_with(["Feb-2025", "Jan-2025"])
+
+
+def test_get_cycles_delegates_to_refdata() -> None:
+    cycles = [Mock()]
+    refdata = Mock()
+    refdata.get_cycles.return_value = cycles
+    api = RefDataAPI(refdata)
+
+    assert api.get_cycles() == cycles
+    refdata.get_cycles.assert_called_once_with()
+
+
+def test_get_cycle_by_id_delegates_to_refdata() -> None:
+    cycle = Mock()
+    refdata = Mock()
+    refdata.get_cycle_by_id.return_value = cycle
+    api = RefDataAPI(refdata)
+
+    assert api.get_cycle_by_id("CALENDAR_MONTHS") is cycle
+    refdata.get_cycle_by_id.assert_called_once_with("CALENDAR_MONTHS")
+
+
+def test_get_cycle_memberships_delegates_to_refdata() -> None:
+    memberships = [Mock()]
+    refdata = Mock()
+    refdata.get_cycle_memberships.return_value = memberships
+    api = RefDataAPI(refdata)
+
+    assert api.get_cycle_memberships("CALENDAR_MONTHS") == memberships
+    refdata.get_cycle_memberships.assert_called_once_with("CALENDAR_MONTHS")
+
+
+def test_get_cycle_elements_delegates_to_refdata() -> None:
+    elements = {"Jan-2025": 1}
+    refdata = Mock()
+    refdata.get_cycle_elements.return_value = elements
+    api = RefDataAPI(refdata)
+
+    assert api.get_cycle_elements(["Jan-2025"], cycle_id="CALENDAR_MONTHS") == elements
+    refdata.get_cycle_elements.assert_called_once_with(
+        ["Jan-2025"],
+        cycle_id="CALENDAR_MONTHS",
     )
 
-    assert contracts == []
 
+def test_get_cycle_element_delegates_to_refdata() -> None:
+    refdata = Mock()
+    refdata.get_cycle_element.return_value = 1
+    api = RefDataAPI(refdata)
 
-@pytest.mark.usefixtures("mock_data_active_contracts")
-def test_get_active_contracts_rejects_both_product_id_and_product_ids(
-    ref_data_api: RefDataAPI,
-) -> None:
-    with pytest.raises(ValueError):
-        ref_data_api.get_active_contracts(
-            date(2025, 1, 15),
-            product_id="gold_fut",
-            product_ids=["gold_fut"],
-        )
-
-
-@pytest.mark.usefixtures("mock_data_active_contracts")
-def test_get_active_contracts_caching_behavior(
-    ref_data_api: RefDataAPI,
-    mocker: MockerFixture,
-) -> None:
-    spy = mocker.spy(ref_data_api.session_manager, "db_session_scope")
-
-    ref_data_api.get_active_contracts(date(2025, 1, 15), product_id="gold_fut")
-    assert spy.call_count == 1
-
-    ref_data_api.get_active_contracts(date(2025, 1, 15), product_id="gold_fut")
-    assert spy.call_count == 1
-
-
-def test_get_contracts_for_product_orders_by_period(
-    ref_data_api: RefDataAPI,
-    db_session_manager: SQLSessionManager,
-) -> None:
-    with db_session_manager.db_session_scope() as session:
-        product = FuturesProduct(
-            product_id="mix_tenor_fut",
-            venue="CME",
-            description="Mixed Tenor Futures",
-            currency=Currency.USD,
-            unit=ProductUnit.TROY_OUNCE,
-            contract_size=1.0,
-            valid_period_rule="",
-            listing_rule="Mixed",
-            period_types=(PeriodType.MONTH,),
-            settlement=SettlementMethod.CASH,
-            last_trading_rule="",
-            expiry_rule="",
-            trading_calendar="Default Calendar",
-            tick_size=0.01,
-            tick_value=1.0,
-        )
-        session.add(futures_product_to_orm(product))
-
-        p_year_2025 = Period(
-            period_id="2025",
-            period_type=PeriodType.YEAR,
-            first_date=date(2025, 1, 1),
-            last_date=date(2025, 12, 31),
-        )
-        p_month_jan_2025 = Period(
-            period_id="Jan-2025",
-            period_type=PeriodType.MONTH,
-            first_date=date(2025, 1, 1),
-            last_date=date(2025, 1, 31),
-        )
-        session.add(period_to_orm(p_year_2025))
-        session.add(period_to_orm(p_month_jan_2025))
-
-        c_month = FuturesContract(
-            product_id="mix_tenor_fut",
-            period_id="Jan-2025",
-            contract_id="mix_tenor_fut.Jan-2025",
-            contract_size=1.0,
-            currency=Currency.USD,
-            unit=ProductUnit.TROY_OUNCE,
-            trading_calendar="Default Calendar",
-            first_day_of_interest=date(2024, 12, 1),
-            last_trading_day=date(2025, 1, 30),
-        )
-        c_year = FuturesContract(
-            product_id="mix_tenor_fut",
-            period_id="2025",
-            contract_id="mix_tenor_fut.2025",
-            contract_size=1.0,
-            currency=Currency.USD,
-            unit=ProductUnit.TROY_OUNCE,
-            trading_calendar="Default Calendar",
-            first_day_of_interest=date(2024, 1, 1),
-            last_trading_day=date(2025, 12, 15),
-        )
-        session.add(futures_contract_to_orm(c_month))
-        session.add(futures_contract_to_orm(c_year))
-
-    contracts = ref_data_api.get_contracts_for_product("mix_tenor_fut")
-
-    assert [contract.contract_id for contract in contracts] == [
-        "mix_tenor_fut.2025",
-        "mix_tenor_fut.Jan-2025",
-    ]
-
-
-@pytest.mark.usefixtures("mock_data")
-def test_get_contract_by_id_found(ref_data_api: RefDataAPI) -> None:
-    contract = ref_data_api.get_contract_by_id("gold_fut.Jan-2025")
-
-    assert contract.contract_id == "gold_fut.Jan-2025"
-
-
-@pytest.mark.usefixtures("mock_data")
-def test_get_contract_by_id_missing(ref_data_api: RefDataAPI) -> None:
-    with pytest.raises(RefDataLookupError):
-        ref_data_api.get_contract_by_id("does_not_exist")
-
-
-@pytest.mark.usefixtures("mock_data")
-def test_maybe_get_contract_by_id_missing(ref_data_api: RefDataAPI) -> None:
-    contract = ref_data_api.maybe_get_contract_by_id("does_not_exist")
-
-    assert contract is None
-
-
-def test_get_contracts_by_id_preserves_order_and_ignores_missing(
-    ref_data_api: RefDataAPI,
-    db_session_manager: SQLSessionManager,
-) -> None:
-    with db_session_manager.db_session_scope() as session:
-        product = FuturesProduct(
-            product_id="lookup_fut",
-            venue="CME",
-            description="Lookup Futures",
-            currency=Currency.USD,
-            unit=ProductUnit.TROY_OUNCE,
-            contract_size=1.0,
-            valid_period_rule="",
-            listing_rule="Monthly",
-            period_types=(PeriodType.MONTH,),
-            settlement=SettlementMethod.CASH,
-            last_trading_rule="",
-            expiry_rule="",
-            trading_calendar="Default Calendar",
-            tick_size=0.01,
-            tick_value=1.0,
-        )
-        session.add(futures_product_to_orm(product))
-
-        period = Period(
-            period_id="Jan-2025",
-            period_type=PeriodType.MONTH,
-            first_date=date(2025, 1, 1),
-            last_date=date(2025, 1, 31),
-        )
-        session.add(period_to_orm(period))
-
-        c1 = FuturesContract(
-            product_id="lookup_fut",
-            period_id="Jan-2025",
-            contract_id="lookup_fut.A",
-            contract_size=1.0,
-            currency=Currency.USD,
-            unit=ProductUnit.TROY_OUNCE,
-            trading_calendar="Default Calendar",
-            first_day_of_interest=date(2025, 1, 1),
-            last_trading_day=date(2025, 1, 29),
-        )
-        c2 = FuturesContract(
-            product_id="lookup_fut",
-            period_id="Jan-2025",
-            contract_id="lookup_fut.B",
-            contract_size=1.0,
-            currency=Currency.USD,
-            unit=ProductUnit.TROY_OUNCE,
-            trading_calendar="Default Calendar",
-            first_day_of_interest=date(2025, 1, 2),
-            last_trading_day=date(2025, 1, 30),
-        )
-        session.add(futures_contract_to_orm(c1))
-        session.add(futures_contract_to_orm(c2))
-
-    contracts = ref_data_api.get_contracts_by_id(
-        ["lookup_fut.B", "missing", "lookup_fut.A", "lookup_fut.B"]
+    assert api.get_cycle_element("Jan-2025", cycle_id="CALENDAR_MONTHS") == 1
+    refdata.get_cycle_element.assert_called_once_with(
+        "Jan-2025",
+        cycle_id="CALENDAR_MONTHS",
     )
-
-    assert [contract.contract_id for contract in contracts] == [
-        "lookup_fut.B",
-        "lookup_fut.A",
-        "lookup_fut.B",
-    ]
-
-
-@pytest.mark.usefixtures("mock_data")
-def test_get_contracts_by_id_empty_list_returns_empty(
-    ref_data_api: RefDataAPI,
-) -> None:
-    assert ref_data_api.get_contracts_by_id([]) == []
-
-
-@pytest.mark.usefixtures("mock_data")
-def test_get_contract_by_id_caching_behavior(
-    ref_data_api: RefDataAPI,
-    mocker: MockerFixture,
-) -> None:
-    spy = mocker.spy(ref_data_api.session_manager, "db_session_scope")
-
-    ref_data_api.get_contract_by_id("gold_fut.Jan-2025")
-    assert spy.call_count == 1
-
-    ref_data_api.get_contract_by_id("gold_fut.Jan-2025")
-    assert spy.call_count == 1
-
-
-def test_get_contracts_by_id_caching_behavior(
-    ref_data_api: RefDataAPI,
-    db_session_manager: SQLSessionManager,
-    mocker: MockerFixture,
-) -> None:
-    with db_session_manager.db_session_scope() as session:
-        product = FuturesProduct(
-            product_id="lookup_cache_fut",
-            venue="CME",
-            description="Lookup Cache Futures",
-            currency=Currency.USD,
-            unit=ProductUnit.TROY_OUNCE,
-            contract_size=1.0,
-            valid_period_rule="",
-            listing_rule="Monthly",
-            period_types=(PeriodType.MONTH,),
-            settlement=SettlementMethod.CASH,
-            last_trading_rule="",
-            expiry_rule="",
-            trading_calendar="Default Calendar",
-            tick_size=0.01,
-            tick_value=1.0,
-        )
-        session.add(futures_product_to_orm(product))
-
-        period = Period(
-            period_id="Jan-2025",
-            period_type=PeriodType.MONTH,
-            first_date=date(2025, 1, 1),
-            last_date=date(2025, 1, 31),
-        )
-        session.add(period_to_orm(period))
-
-        contract = FuturesContract(
-            product_id="lookup_cache_fut",
-            period_id="Jan-2025",
-            contract_id="lookup_cache_fut.A",
-            contract_size=1.0,
-            currency=Currency.USD,
-            unit=ProductUnit.TROY_OUNCE,
-            trading_calendar="Default Calendar",
-            first_day_of_interest=date(2025, 1, 1),
-            last_trading_day=date(2025, 1, 29),
-        )
-        session.add(futures_contract_to_orm(contract))
-
-    spy = mocker.spy(ref_data_api.session_manager, "db_session_scope")
-
-    ref_data_api.get_contracts_by_id(["lookup_cache_fut.A"])
-    assert spy.call_count == 1
-
-    ref_data_api.get_contracts_by_id(["lookup_cache_fut.A"])
-    assert spy.call_count == 1

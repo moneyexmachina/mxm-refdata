@@ -1,8 +1,15 @@
-"""A cache manager for the reference data service."""
+"""A cache manager for reference data."""
+
+from __future__ import annotations
 
 import threading
+from collections.abc import Callable
+from typing import TypeGuard, TypeVar, cast
 
 from cachetools import LRUCache
+
+V = TypeVar("V")
+T = TypeVar("T")
 
 
 class CacheManager[V]:
@@ -16,6 +23,29 @@ class CacheManager[V]:
         """Thread-safe retrieval from the cache."""
         with self._lock:
             return self._cache.get(key)
+
+    def get_as(self, key: str, expected_type: type[T]) -> T | None:
+        """Retrieve a cached value if it has the expected concrete type."""
+        value = self.get(key)
+        if isinstance(value, expected_type):
+            return value
+        return None
+
+    def get_checked(
+        self,
+        key: str,
+        guard: Callable[[object], TypeGuard[T]],
+    ) -> T | None:
+        """Retrieve a cached value if it passes a custom type guard."""
+        value = self.get(key)
+        if value is None:
+            return None
+
+        candidate = cast(object, value)
+        if guard(candidate):
+            return candidate
+
+        return None
 
     def set(self, key: str, value: V) -> None:
         """Thread-safe insertion into the cache."""

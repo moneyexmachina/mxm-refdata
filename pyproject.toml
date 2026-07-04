@@ -28,7 +28,8 @@ rich = "^15.0.0"
 cachetools = "^7.1.1"
 pydantic-settings = "^2.14.1"
 mxm-types = ">=0.3.1, <0.4"
-
+mxm-config = ">=0.6.2, <0.7" 
+mxm-runtime = ">=0.1.2, <0.2"
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.9.0"
@@ -67,4 +68,6 @@ known-first-party = ["mxm"]
 [tool.pytest.ini_options]
 addopts = "-q"
 pythonpath = ["src"]
-
+filterwarnings = [
+    "ignore:The 'generic' unit for NumPy timedelta is deprecated.*:DeprecationWarning:exchange_calendars\\.utils\\.pandas_utils",
+]

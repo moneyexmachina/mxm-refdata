@@ -15,7 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
-from mxm.refdata.config import RefDataConfigData
+from mxm.config import MXMConfig
 from mxm.refdata.models.currencies import Currency
 from mxm.refdata.models.periods import PeriodType
 from mxm.refdata.models.products.futures_product import FuturesProduct, SettlementMethod
@@ -140,7 +140,7 @@ class FuturesProductFactory:
         return [self.intern(p) for p in products]
 
     @classmethod
-    def from_config_data(cls, config: RefDataConfigData) -> FuturesProductFactory:
+    def from_config(cls, config: MXMConfig) -> FuturesProductFactory:
         factory = cls()
         factory.initialise_from_json(config["REFDATA_FUTURES_PRODUCTS_JSON_ROOT"])
         return factory

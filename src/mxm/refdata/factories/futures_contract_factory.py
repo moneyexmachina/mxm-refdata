@@ -1,6 +1,6 @@
 """Factory to create futures contracts."""
 
-from mxm.refdata.config import RefDataConfigData
+from mxm.config import MXMConfig
 from mxm.refdata.models.contracts.futures_contract import FuturesContract
 from mxm.refdata.models.months import Month
 from mxm.refdata.models.periods import Period, PeriodType
@@ -117,7 +117,7 @@ class FuturesContractFactory:
         )
 
     @classmethod
-    def from_config_data(cls, config: RefDataConfigData) -> "FuturesContractFactory":
+    def from_config(cls, config: MXMConfig) -> "FuturesContractFactory":
         """Construct a factory from fully materialised refdata configuration."""
         _ = config
         return cls()

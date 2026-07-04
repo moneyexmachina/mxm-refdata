@@ -13,98 +13,74 @@ from mxm.refdata.cli import app
 runner = CliRunner()
 
 
-def test_build_rejects_invalid_contract_start_date() -> None:
-    result = runner.invoke(
-        app,
-        [
-            "build",
-            "--db-url",
-            "sqlite:///:memory:",
-            "--contract-start-date",
-            "bad-date",
-        ],
-    )
+def test_build_invokes_refdata_build(mocker: MockerFixture) -> None:
+    refdata = Mock()
+    mocker.patch("mxm.refdata.cli._refdata", return_value=refdata)
 
-    assert result.exit_code != 0
-    assert "Expected date in YYYY-MM-DD format" in result.output
+    result = runner.invoke(app, ["build", "--environment", "dev", "--role", "default"])
+
+    assert result.exit_code == 0
+    refdata.build.assert_called_once_with()
 
 
-def test_build_invokes_build_refdata(mocker: MockerFixture) -> None:
-    mocked_build = mocker.patch("mxm.refdata.cli.build_refdata")
-    mocked_from_db_url = mocker.patch("mxm.refdata.cli.SQLSessionManager.from_db_url")
+def test_rebuild_invokes_refdata_rebuild(mocker: MockerFixture) -> None:
+    refdata = Mock()
+    mocker.patch("mxm.refdata.cli._refdata", return_value=refdata)
 
     result = runner.invoke(
-        app,
-        [
-            "build",
-            "--db-url",
-            "sqlite:///:memory:",
-            "--contract-start-date",
-            "2024-01-01",
-            "--contract-end-date",
-            "2024-12-31",
-        ],
+        app, ["rebuild", "--environment", "dev", "--role", "default"]
     )
 
     assert result.exit_code == 0
-    mocked_from_db_url.assert_called_once_with("sqlite:///:memory:")
-
-    assert mocked_build.call_count == 1
-    kwargs = mocked_build.call_args.kwargs
-    assert kwargs["config"]["SQL_DB_URL"] == "sqlite:///:memory:"
-    assert kwargs["config"]["REFDATA_CONTRACT_START_DATE"] == "2024-01-01"
-    assert kwargs["config"]["REFDATA_CONTRACT_END_DATE"] == "2024-12-31"
-    assert kwargs["session_manager"] == mocked_from_db_url.return_value
+    refdata.rebuild.assert_called_once_with()
 
 
-def test_rebuild_invokes_rebuild_refdata(mocker: MockerFixture) -> None:
-    mocked_rebuild = mocker.patch("mxm.refdata.cli.rebuild_refdata")
-    mocked_from_db_url = mocker.patch("mxm.refdata.cli.SQLSessionManager.from_db_url")
+def test_refdata_helper_builds_runtime_identity_context_and_refdata(
+    mocker: MockerFixture,
+) -> None:
+    identity = Mock()
+    ctx = Mock()
+    refdata = Mock()
 
-    result = runner.invoke(
-        app,
-        [
-            "rebuild",
-            "--db-url",
-            "sqlite:///:memory:",
-            "--contract-start-date",
-            "2025-01-01",
-            "--contract-end-date",
-            "2025-12-31",
-        ],
+    build_identity = mocker.patch(
+        "mxm.refdata.cli.build_runtime_identity",
+        return_value=identity,
     )
+    build_context = mocker.patch(
+        "mxm.refdata.cli.build_runtime_context",
+        return_value=ctx,
+    )
+    build_refdata = mocker.patch(
+        "mxm.refdata.cli.build_refdata",
+        return_value=refdata,
+    )
+
+    from mxm.refdata.cli import _refdata
+
+    result = _refdata(environment="prod", role="admin")
+
+    assert result is refdata
+    build_identity.assert_called_once_with(
+        app="mxm-refdata",
+        environment="prod",
+        role="admin",
+    )
+    build_context.assert_called_once_with(identity=identity)
+    build_refdata.assert_called_once_with(ctx)
+
+
+def test_products_uses_refdata_runtime(mocker: MockerFixture) -> None:
+    refdata = Mock()
+    refdata.get_all_products.return_value = []
+    mocker.patch("mxm.refdata.cli._refdata", return_value=refdata)
+
+    result = runner.invoke(app, ["products"])
 
     assert result.exit_code == 0
-    mocked_from_db_url.assert_called_once_with("sqlite:///:memory:")
-
-    assert mocked_rebuild.call_count == 1
-    kwargs = mocked_rebuild.call_args.kwargs
-    assert kwargs["config"]["SQL_DB_URL"] == "sqlite:///:memory:"
-    assert kwargs["config"]["REFDATA_CONTRACT_START_DATE"] == "2025-01-01"
-    assert kwargs["config"]["REFDATA_CONTRACT_END_DATE"] == "2025-12-31"
-    assert kwargs["session_manager"] == mocked_from_db_url.return_value
+    refdata.get_all_products.assert_called_once_with()
 
 
-def test_products_uses_api_from_config_data(mocker: MockerFixture) -> None:
-    api = Mock()
-    api.get_all_products.return_value = []
-
-    mocked_factory = mocker.patch(
-        "mxm.refdata.cli.RefDataAPI.from_config_data",
-        return_value=api,
-    )
-
-    result = runner.invoke(
-        app,
-        ["products", "--db-url", "sqlite:///:memory:"],
-    )
-
-    assert result.exit_code == 0
-    mocked_factory.assert_called_once_with({"SQL_DB_URL": "sqlite:///:memory:"})
-    api.get_all_products.assert_called_once_with()
-
-
-def test_product_uses_api_lookup(mocker: MockerFixture) -> None:
+def test_product_uses_refdata_lookup(mocker: MockerFixture) -> None:
     product = Mock()
     product.product_id = "cme_test_futures"
     product.venue = "CME"
@@ -122,66 +98,91 @@ def test_product_uses_api_lookup(mocker: MockerFixture) -> None:
     product.tick_value = 12.5
     product.valid_period_rule = "HMUZ"
 
-    api = Mock()
-    api.get_product_by_id.return_value = product
-    mocker.patch("mxm.refdata.cli.RefDataAPI.from_config_data", return_value=api)
+    refdata = Mock()
+    refdata.get_product_by_id.return_value = product
+    mocker.patch("mxm.refdata.cli._refdata", return_value=refdata)
 
-    result = runner.invoke(
-        app,
-        ["product", "cme_test_futures", "--db-url", "sqlite:///:memory:"],
-    )
+    result = runner.invoke(app, ["product", "cme_test_futures"])
 
     assert result.exit_code == 0
-    api.get_product_by_id.assert_called_once_with("cme_test_futures")
+    refdata.get_product_by_id.assert_called_once_with("cme_test_futures")
 
 
-def test_contracts_uses_api_lookup(mocker: MockerFixture) -> None:
+def test_contracts_uses_refdata_lookup(mocker: MockerFixture) -> None:
     contract = Mock()
     contract.contract_id = "cme_test_futures.Mar-2025"
     contract.period_id = "Mar-2025"
     contract.first_day_of_interest = date(2024, 1, 1)
     contract.last_trading_day = date(2025, 3, 20)
 
-    api = Mock()
-    api.get_contracts_for_product.return_value = [contract]
-    mocker.patch("mxm.refdata.cli.RefDataAPI.from_config_data", return_value=api)
+    refdata = Mock()
+    refdata.get_contracts_for_product.return_value = [contract]
+    mocker.patch("mxm.refdata.cli._refdata", return_value=refdata)
 
-    result = runner.invoke(
-        app,
-        ["contracts", "cme_test_futures", "--db-url", "sqlite:///:memory:"],
-    )
+    result = runner.invoke(app, ["contracts", "cme_test_futures"])
 
     assert result.exit_code == 0
-    api.get_contracts_for_product.assert_called_once_with("cme_test_futures")
+    refdata.get_contracts_for_product.assert_called_once_with("cme_test_futures")
 
 
 def test_active_uses_parsed_date_and_optional_product_id(
     mocker: MockerFixture,
 ) -> None:
-    api = Mock()
-    api.get_active_contracts.return_value = []
-    mocker.patch("mxm.refdata.cli.RefDataAPI.from_config_data", return_value=api)
+    refdata = Mock()
+    refdata.get_active_contracts.return_value = []
+    mocker.patch("mxm.refdata.cli._refdata", return_value=refdata)
 
     result = runner.invoke(
         app,
         [
             "active",
             "2025-06-18",
-            "--db-url",
-            "sqlite:///:memory:",
             "--product-id",
             "cme_test_futures",
         ],
     )
 
     assert result.exit_code == 0
-    api.get_active_contracts.assert_called_once_with(
+    refdata.get_active_contracts.assert_called_once_with(
         date(2025, 6, 18),
         product_id="cme_test_futures",
     )
 
 
-def test_smokecheck_invokes_run_smokechecks(mocker: MockerFixture) -> None:
+def test_active_rejects_invalid_date(mocker: MockerFixture) -> None:
+    refdata = Mock()
+    mocker.patch("mxm.refdata.cli._refdata", return_value=refdata)
+
+    result = runner.invoke(app, ["active", "bad-date"])
+
+    assert result.exit_code != 0
+    assert "Expected date in YYYY-MM-DD format" in result.output
+    refdata.get_active_contracts.assert_not_called()
+
+
+def test_coverage_uses_refdata_runtime(mocker: MockerFixture) -> None:
+    product = Mock()
+    product.product_id = "test_fut"
+    product.venue = "CME"
+
+    contract_a = Mock()
+    contract_a.contract_id = "test_fut.Jan-2025"
+    contract_b = Mock()
+    contract_b.contract_id = "test_fut.Feb-2025"
+
+    refdata = Mock()
+    refdata.get_all_products.return_value = [product]
+    refdata.get_contracts_for_product.return_value = [contract_a, contract_b]
+    mocker.patch("mxm.refdata.cli._refdata", return_value=refdata)
+
+    result = runner.invoke(app, ["coverage"])
+
+    assert result.exit_code == 0
+    refdata.get_all_products.assert_called_once_with()
+    refdata.get_contracts_for_product.assert_called_once_with("test_fut")
+
+
+def test_smokecheck_invokes_refdata_smokecheck(mocker: MockerFixture) -> None:
     counts = Mock()
     counts.products = 1
     counts.periods = 2
@@ -194,19 +195,27 @@ def test_smokecheck_invokes_run_smokechecks(mocker: MockerFixture) -> None:
     report.results = []
     report.passed = True
 
-    mocked_smokecheck = mocker.patch(
-        "mxm.refdata.cli.run_smokechecks",
-        return_value=report,
-    )
-    mocked_from_db_url = mocker.patch("mxm.refdata.cli.SQLSessionManager.from_db_url")
+    refdata = Mock()
+    refdata.smokecheck.return_value = report
+    mocker.patch("mxm.refdata.cli._refdata", return_value=refdata)
+
+    result = runner.invoke(app, ["smokecheck"])
+
+    assert result.exit_code == 0
+    refdata.smokecheck.assert_called_once_with()
+
+
+def test_environment_and_role_are_passed_to_refdata_helper(
+    mocker: MockerFixture,
+) -> None:
+    refdata = Mock()
+    refdata.get_all_products.return_value = []
+    mocked_refdata = mocker.patch("mxm.refdata.cli._refdata", return_value=refdata)
 
     result = runner.invoke(
         app,
-        ["smokecheck", "--db-url", "sqlite:///:memory:"],
+        ["products", "--environment", "prod", "--role", "admin"],
     )
 
     assert result.exit_code == 0
-    mocked_from_db_url.assert_called_once_with("sqlite:///:memory:")
-    mocked_smokecheck.assert_called_once_with(
-        session_manager=mocked_from_db_url.return_value
-    )
+    mocked_refdata.assert_called_once_with(environment="prod", role="admin")

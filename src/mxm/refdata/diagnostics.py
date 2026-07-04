@@ -1,10 +1,10 @@
-"""Operational smoke checks for the materialised mxm-refdata database."""
+"""Diagnostic routines for the materialised MXM refdata database."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Protocol
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -29,6 +29,13 @@ CYCLE_ID_CALENDAR_MONTHS = "CALENDAR_MONTHS"
 CYCLE_ID_CALENDAR_QUARTERS = "CALENDAR_QUARTERS"
 
 type SmokeCheckStatus = Literal["pass", "fail"]
+type SmokeCheck = Callable[[Session], None]
+
+
+class RefDataRuntime(Protocol):
+    """Protocol required by refdata diagnostic functions."""
+
+    session_manager: SQLSessionManager
 
 
 class SmokeCheckFailed(Exception):
@@ -64,26 +71,41 @@ class SmokeCheckReport:
 
     @property
     def passed(self) -> bool:
-        """Return True if all smoke checks passed."""
+        """Return whether all smoke checks passed."""
         return all(result.status == "pass" for result in self.results)
 
 
-type SmokeCheck = Callable[[Session], None]
+def run_refdata_smokechecks(refdata: RefDataRuntime) -> SmokeCheckReport:
+    """Run operational smoke checks against a refdata runtime graph."""
+    return run_smokechecks(refdata.session_manager)
 
 
-def _fail(message: str) -> None:
-    raise SmokeCheckFailed(message)
+def run_smokechecks(session_manager: SQLSessionManager) -> SmokeCheckReport:
+    """Run operational smoke checks against a materialised refdata database."""
+    with session_manager.db_session_scope() as session:
+        counts = count_refdata_rows(session)
+        results: list[SmokeCheckResult] = []
 
+        for name, check in SMOKE_CHECKS:
+            try:
+                check(session)
+            except SmokeCheckFailed as err:
+                results.append(
+                    SmokeCheckResult(
+                        name=name,
+                        status="fail",
+                        message=str(err),
+                    )
+                )
+            else:
+                results.append(
+                    SmokeCheckResult(
+                        name=name,
+                        status="pass",
+                    )
+                )
 
-def _assert(condition: bool, message: str) -> None:
-    if not condition:
-        _fail(message)
-
-
-def _pick_first[T](iterable: Iterable[T]) -> T | None:
-    for item in iterable:
-        return item
-    return None
+    return SmokeCheckReport(counts=counts, results=results)
 
 
 def count_refdata_rows(session: Session) -> RefDataCounts:
@@ -274,6 +296,21 @@ def smoke_check_calendar_month_mapping(session: Session) -> None:
     )
 
 
+def _fail(message: str) -> None:
+    raise SmokeCheckFailed(message)
+
+
+def _assert(condition: bool, message: str) -> None:
+    if not condition:
+        _fail(message)
+
+
+def _pick_first[T](iterable: Iterable[T]) -> T | None:
+    for item in iterable:
+        return item
+    return None
+
+
 SMOKE_CHECKS: tuple[tuple[str, SmokeCheck], ...] = (
     ("core tables populated", smoke_check_non_empty_core_tables),
     ("period_types storage + round-trip", smoke_check_roundtrip_period_types),
@@ -292,32 +329,3 @@ SMOKE_CHECKS: tuple[tuple[str, SmokeCheck], ...] = (
     ),
     ("calendar month mapping spot-check", smoke_check_calendar_month_mapping),
 )
-
-
-def run_smokechecks(session_manager: SQLSessionManager) -> SmokeCheckReport:
-    """Run operational smoke checks against the materialised refdata database."""
-
-    with session_manager.db_session_scope() as session:
-        counts = count_refdata_rows(session)
-        results: list[SmokeCheckResult] = []
-
-        for name, check in SMOKE_CHECKS:
-            try:
-                check(session)
-            except SmokeCheckFailed as err:
-                results.append(
-                    SmokeCheckResult(
-                        name=name,
-                        status="fail",
-                        message=str(err),
-                    )
-                )
-            else:
-                results.append(
-                    SmokeCheckResult(
-                        name=name,
-                        status="pass",
-                    )
-                )
-
-    return SmokeCheckReport(counts=counts, results=results)

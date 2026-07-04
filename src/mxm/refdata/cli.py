@@ -8,15 +8,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from mxm.refdata.api import RefDataAPI
-from mxm.refdata.config import (
-    RefDataConfigData,
-    RefDataConfigInput,
-    normalise_refdata_config_data,
-)
-from mxm.refdata.database.sql_session_manager import SQLSessionManager
-from mxm.refdata.services.bootstrap import build_refdata, rebuild_refdata
-from mxm.refdata.services.smokecheck import run_smokechecks
+from mxm.refdata.composition import build_refdata
+from mxm.refdata.runtime import RefData
+from mxm.runtime import build_runtime_context, build_runtime_identity
 
 app = typer.Typer(
     add_completion=False,
@@ -25,29 +19,14 @@ app = typer.Typer(
 
 console = Console()
 
-
-DbUrlOption = Annotated[
+EnvironmentOption = Annotated[
     str,
-    typer.Option(
-        "--db-url",
-        help="SQLAlchemy database URL for the refdata database.",
-    ),
+    typer.Option("--environment", "-e", help="MXM runtime environment."),
 ]
 
-ContractStartDateOption = Annotated[
-    str | None,
-    typer.Option(
-        "--contract-start-date",
-        help="Contract materialisation start date in YYYY-MM-DD format.",
-    ),
-]
-
-ContractEndDateOption = Annotated[
-    str | None,
-    typer.Option(
-        "--contract-end-date",
-        help="Contract materialisation end date in YYYY-MM-DD format.",
-    ),
+RoleOption = Annotated[
+    str,
+    typer.Option("--role", "-r", help="MXM runtime role."),
 ]
 
 
@@ -59,97 +38,51 @@ def parse_cli_date(value: str) -> date:
         raise typer.BadParameter("Expected date in YYYY-MM-DD format.") from err
 
 
-def _config_input(
+def _refdata(
     *,
-    db_url: str,
-    contract_start_date: str | None = None,
-    contract_end_date: str | None = None,
-) -> RefDataConfigInput:
-    """Build partial refdata config input from CLI arguments."""
-    config: RefDataConfigInput = {
-        "SQL_DB_URL": db_url,
-    }
-
-    if contract_start_date is not None:
-        parse_cli_date(contract_start_date)
-        config["REFDATA_CONTRACT_START_DATE"] = contract_start_date
-
-    if contract_end_date is not None:
-        parse_cli_date(contract_end_date)
-        config["REFDATA_CONTRACT_END_DATE"] = contract_end_date
-
-    return config
-
-
-def _normalised_config(
-    *,
-    db_url: str,
-    contract_start_date: str | None = None,
-    contract_end_date: str | None = None,
-) -> RefDataConfigData:
-    """Build fully materialised refdata config from CLI arguments."""
-    return normalise_refdata_config_data(
-        _config_input(
-            db_url=db_url,
-            contract_start_date=contract_start_date,
-            contract_end_date=contract_end_date,
-        )
+    environment: str,
+    role: str,
+) -> RefData:
+    """Build the configured RefData runtime for the CLI invocation."""
+    identity = build_runtime_identity(
+        app="mxm-refdata",
+        environment=environment,
+        role=role,
     )
-
-
-def _session_manager(config: RefDataConfigData) -> SQLSessionManager:
-    """Construct a SQL session manager from normalised config."""
-    return SQLSessionManager.from_db_url(config["SQL_DB_URL"])
-
-
-def _api(*, db_url: str) -> RefDataAPI:
-    """Construct a RefDataAPI from CLI arguments."""
-    return RefDataAPI.from_config_data({"SQL_DB_URL": db_url})
+    ctx = build_runtime_context(identity=identity)
+    return build_refdata(ctx)
 
 
 @app.command("build")
 def build(
-    db_url: DbUrlOption,
-    contract_start_date: ContractStartDateOption = None,
-    contract_end_date: ContractEndDateOption = None,
+    environment: EnvironmentOption = "dev",
+    role: RoleOption = "default",
 ) -> None:
-    """Build the local reference-data database."""
-    config = _normalised_config(
-        db_url=db_url,
-        contract_start_date=contract_start_date,
-        contract_end_date=contract_end_date,
-    )
-    session_manager = _session_manager(config)
-
-    build_refdata(config=config, session_manager=session_manager)
+    """Build the configured reference-data database."""
+    refdata = _refdata(environment=environment, role=role)
+    refdata.build()
     console.print("[green]Reference data database built.[/]")
 
 
 @app.command("rebuild")
 def rebuild(
-    db_url: DbUrlOption,
-    contract_start_date: ContractStartDateOption = None,
-    contract_end_date: ContractEndDateOption = None,
+    environment: EnvironmentOption = "dev",
+    role: RoleOption = "default",
 ) -> None:
-    """Destructively rebuild the local reference-data database."""
-    config = _normalised_config(
-        db_url=db_url,
-        contract_start_date=contract_start_date,
-        contract_end_date=contract_end_date,
-    )
-    session_manager = _session_manager(config)
-
-    rebuild_refdata(config=config, session_manager=session_manager)
+    """Destructively rebuild the configured reference-data database."""
+    refdata = _refdata(environment=environment, role=role)
+    refdata.rebuild()
     console.print("[green]Reference data database rebuilt.[/]")
 
 
 @app.command("products")
 def products(
-    db_url: DbUrlOption,
+    environment: EnvironmentOption = "dev",
+    role: RoleOption = "default",
 ) -> None:
     """List available futures products."""
-    api = _api(db_url=db_url)
-    rows = api.get_all_products()
+    refdata = _refdata(environment=environment, role=role)
+    rows = refdata.get_all_products()
 
     table = Table(title="MXM Futures Products")
     table.add_column("Product ID")
@@ -173,11 +106,12 @@ def products(
 @app.command("product")
 def product(
     product_id: Annotated[str, typer.Argument(help="Canonical product ID")],
-    db_url: DbUrlOption,
+    environment: EnvironmentOption = "dev",
+    role: RoleOption = "default",
 ) -> None:
     """Show one futures product."""
-    api = _api(db_url=db_url)
-    product_obj = api.get_product_by_id(product_id)
+    refdata = _refdata(environment=environment, role=role)
+    product_obj = refdata.get_product_by_id(product_id)
 
     table = Table(title=f"Product: {product_obj.product_id}")
     table.add_column("Field")
@@ -208,11 +142,12 @@ def product(
 @app.command("contracts")
 def contracts(
     product_id: Annotated[str, typer.Argument(help="Canonical product ID")],
-    db_url: DbUrlOption,
+    environment: EnvironmentOption = "dev",
+    role: RoleOption = "default",
 ) -> None:
     """List contracts for a futures product."""
-    api = _api(db_url=db_url)
-    rows = api.get_contracts_for_product(product_id)
+    refdata = _refdata(environment=environment, role=role)
+    rows = refdata.get_contracts_for_product(product_id)
 
     table = Table(title=f"Contracts: {product_id}")
     table.add_column("Contract ID")
@@ -234,13 +169,14 @@ def contracts(
 @app.command("active")
 def active(
     as_of_date: Annotated[str, typer.Argument(help="Date in YYYY-MM-DD format")],
-    db_url: DbUrlOption,
     product_id: Annotated[str | None, typer.Option(help="Optional product ID")] = None,
+    environment: EnvironmentOption = "dev",
+    role: RoleOption = "default",
 ) -> None:
     """List active contracts as of a date."""
     parsed_date = parse_cli_date(as_of_date)
-    api = _api(db_url=db_url)
-    rows = api.get_active_contracts(parsed_date, product_id=product_id)
+    refdata = _refdata(environment=environment, role=role)
+    rows = refdata.get_active_contracts(parsed_date, product_id=product_id)
 
     table = Table(title=f"Active contracts: {parsed_date.isoformat()}")
     table.add_column("Product ID")
@@ -261,11 +197,12 @@ def active(
 
 @app.command("coverage")
 def coverage(
-    db_url: DbUrlOption,
+    environment: EnvironmentOption = "dev",
+    role: RoleOption = "default",
 ) -> None:
     """Show contract coverage by product."""
-    api = _api(db_url=db_url)
-    product_rows = api.get_all_products()
+    refdata = _refdata(environment=environment, role=role)
+    product_rows = refdata.get_all_products()
 
     table = Table(title="MXM Refdata Coverage")
     table.add_column("Product ID")
@@ -275,7 +212,7 @@ def coverage(
     table.add_column("Count", justify="right")
 
     for product_obj in product_rows:
-        product_contracts = api.get_contracts_for_product(product_obj.product_id)
+        product_contracts = refdata.get_contracts_for_product(product_obj.product_id)
 
         if not product_contracts:
             table.add_row(product_obj.product_id, product_obj.venue, "-", "-", "0")
@@ -294,13 +231,12 @@ def coverage(
 
 @app.command("smokecheck")
 def smokecheck(
-    db_url: DbUrlOption,
+    environment: EnvironmentOption = "dev",
+    role: RoleOption = "default",
 ) -> None:
-    """Run operational smoke checks against the local refdata database."""
-    config = _normalised_config(db_url=db_url)
-    session_manager = _session_manager(config)
-
-    report = run_smokechecks(session_manager=session_manager)
+    """Run operational smoke checks against the configured refdata database."""
+    refdata = _refdata(environment=environment, role=role)
+    report = refdata.smokecheck()
 
     console.print("[bold]MXM Refdata Smokecheck[/bold]")
     console.print(

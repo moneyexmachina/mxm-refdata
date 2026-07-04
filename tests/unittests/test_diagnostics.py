@@ -1,15 +1,13 @@
 """Tests for refdata smokecheck reporting."""
 
-from __future__ import annotations
-
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 from pytest import MonkeyPatch
 from sqlalchemy.orm import Session
 
-from mxm.refdata.services import smokecheck
-from mxm.refdata.services.smokecheck import (
+from mxm.refdata import diagnostics
+from mxm.refdata.diagnostics import (
     RefDataCounts,
     SmokeCheckFailed,
     SmokeCheckReport,
@@ -22,7 +20,7 @@ class DummySessionManager:
     """Minimal session manager for smokecheck tests."""
 
     @contextmanager
-    def db_session_scope(self) -> Iterator[Session]:
+    def db_session_scope(self) -> Generator[Session]:
         yield object()  # type: ignore[misc]
 
 
@@ -86,9 +84,9 @@ def test_run_smokechecks_records_passes_and_failures(
     monkeypatch: MonkeyPatch,
 ) -> None:
     """run_smokechecks should record failures without raising."""
-    monkeypatch.setattr(smokecheck, "count_refdata_rows", _count_rows)
+    monkeypatch.setattr(diagnostics, "count_refdata_rows", _count_rows)
     monkeypatch.setattr(
-        smokecheck,
+        diagnostics,
         "SMOKE_CHECKS",
         (
             ("passing check", _passing_check),

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 from pytest import MonkeyPatch
 
-from mxm.refdata.config import RefDataConfigData
+from mxm.config import MXMConfig
 from mxm.refdata.factories import (
     FuturesProductFactory,
     FuturesProductSpec,
@@ -189,15 +190,18 @@ def test_from_config_data_initialises_factory_from_configured_source(
         fake_build_futures_products,
     )
 
-    config: RefDataConfigData = {
-        "SQL_DB_URL": "sqlite:///:memory:",
-        "REFDATA_DB_MODE": "buildable",
-        "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": "/tmp/products",
-        "REFDATA_CONTRACT_START_DATE": "1980-01-01",
-        "REFDATA_CONTRACT_END_DATE": "2046-12-31",
-    }
+    config: MXMConfig = cast(
+        MXMConfig,
+        {
+            "SQL_DB_URL": "sqlite:///:memory:",
+            "REFDATA_DB_MODE": "buildable",
+            "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": "/tmp/products",
+            "REFDATA_CONTRACT_START_DATE": "1980-01-01",
+            "REFDATA_CONTRACT_END_DATE": "2046-12-31",
+        },
+    )
 
-    factory = FuturesProductFactory.from_config_data(config)
+    factory = FuturesProductFactory.from_config(config)
 
     assert isinstance(factory, FuturesProductFactory)
     assert factory.require("TEST") is product
