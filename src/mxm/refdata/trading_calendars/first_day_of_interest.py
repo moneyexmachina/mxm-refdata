@@ -1,74 +1,108 @@
-"""Calculate the first day we are interested in a given FuturesContract."""
+"""Calculate the first day of interest for a futures contract."""
 
-import json
+from __future__ import annotations
+
 from datetime import date
-from importlib.resources import files
 
 from mxm.refdata.factories.period_factory import PeriodFactory
 from mxm.refdata.models import Period, PeriodType
-from mxm.refdata.trading_calendars.last_trading_day import calculate_last_trading_day
-from mxm.refdata.trading_calendars.trading_calendar import TradingCalendar
-
-# Load first_day_of_interest rules from JSON file
-FIRST_DAY_OF_INTEREST_RULES = json.loads(
-    files("mxm.refdata")
-    .joinpath("data/first_day_of_interest_rule.json")
-    .read_text(encoding="utf-8")
+from mxm.refdata.models.products.futures_product_spec import (
+    FirstDayOfInterestRule,
+    LastTradingRule,
 )
+from mxm.refdata.trading_calendars.last_trading_day import (
+    calculate_last_trading_day,
+)
+from mxm.refdata.trading_calendars.trading_calendar import TradingCalendar
 
 
 def calculate_first_day_of_interest(
-    product_id: str, period: Period, trading_calendar: TradingCalendar
+    *,
+    product_id: str,
+    period: Period,
+    trading_calendar: TradingCalendar,
+    rule: FirstDayOfInterestRule,
+    last_trading_rule: LastTradingRule,
 ) -> date:
-    """
-    Calculate the first_day_of_interest for a given futures contract.
+    """Calculate the first day of interest for a futures contract.
 
-    Parameters:
-    - product_id (str): The product identifier for the futures contract.
-    - period (Period): The period representing the contract's expiration/delivery period.
-    - trading_calendar (TradingCalendar): The trading calendar to use for business day calculations.
+    The caller supplies the product-specific rules explicitly. This module
+    performs no source-data loading and contains no product-rule registry.
+
+    Args:
+        product_id:
+            Product identifier used for diagnostic error messages.
+        period:
+            Contract expiration or delivery period.
+        trading_calendar:
+            Trading calendar used for business-day calculations.
+        rule:
+            Structured first-day-of-interest rule.
+        last_trading_rule:
+            Structured last-trading-day rule. This is required when the
+            first-day-of-interest reference is based on the last trading day
+            of December.
 
     Returns:
-    - date: The first business day we are interested in a given FuturesContract.
+        The first business day on which the contract is of interest.
 
     Raises:
-    - ValueError: If the product_id is not found in the JSON rules.
-    - ValueError: If period_type is not MONTH.
+        ValueError:
+            If the period type or reference rule is unsupported.
+        KeyError:
+            If no shift is defined for the contract month.
     """
-    if product_id not in FIRST_DAY_OF_INTEREST_RULES:
+
+    if period.period_type is not PeriodType.MONTH:
         raise ValueError(
-            f"No first_day_of_interest rule found for product_id: {product_id}"
+            f"Unsupported period_type for product_id {product_id!r}: "
+            f"{period.period_type!r}"
         )
 
-    if period.period_type != PeriodType.MONTH:
-        raise ValueError(f"Unsupported period_type: {period.period_type}")
+    month = period.first_date.strftime("%b")
 
-    product_rules = FIRST_DAY_OF_INTEREST_RULES[product_id]
-    month_str = period.first_date.strftime("%b")
     try:
-        shift_n = product_rules["shift_rule"]["n_shift"][month_str]
-    except KeyError as e:
+        shift_n = rule.shift_rule.n_shift[month]
+    except KeyError as exc:
         raise KeyError(
-            f"No shift value found for month '{month_str}' in product_id: {product_id}"
-        ) from e
+            "No first-day-of-interest shift found for "
+            f"month {month!r} and product_id {product_id!r}"
+        ) from exc
 
-    shifted_period = PeriodFactory().shift_period_by_n(period, n=-shift_n)
+    shifted_period = PeriodFactory.shift_period_by_n(
+        period,
+        n=-shift_n,
+    )
 
-    # Determine reference date based on reference rule
-    reference_rule = product_rules["reference_rule"]
+    match rule.reference_rule:
+        case "next_b_day_after_last_trading_day_of_december":
+            december_period = PeriodFactory.get_period(
+                date_obj=date(
+                    shifted_period.last_date.year,
+                    12,
+                    1,
+                ),
+                period_type=rule.shift_rule.shift_period_type,
+            )
 
-    if reference_rule == "next_b_day_after_last_trading_day_of_december":
-        december_period = PeriodFactory.get_period(
-            date_obj=date(shifted_period.last_date.year, 12, 1),
-            period_type=PeriodType.MONTH,
-        )
+            reference_date = calculate_last_trading_day(
+                product_id=product_id,
+                period=december_period,
+                trading_calendar=trading_calendar,
+                rule=last_trading_rule,
+            )
 
-        reference_date = calculate_last_trading_day(
-            product_id, december_period, trading_calendar
-        )
-    elif reference_rule == "next_b_day_after_period":
-        reference_date = shifted_period.last_date
-    else:
-        raise ValueError(f"Unsupported reference_rule: {reference_rule}")
+        case "next_b_day_after_period":
+            reference_date = shifted_period.last_date
 
-    return trading_calendar.get_nth_business_day_relative_to_date(reference_date, n=1)
+        case _:
+            raise ValueError(
+                "Unsupported first-day-of-interest reference_rule "
+                f"for product_id {product_id!r}: "
+                f"{rule.reference_rule!r}"
+            )
+
+    return trading_calendar.get_nth_business_day_relative_to_date(
+        reference_date,
+        n=1,
+    )

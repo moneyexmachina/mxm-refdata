@@ -238,6 +238,7 @@ def initialise_futures_contracts(
     end_date: date,
 ) -> None:
     """Initialise futures contracts from stored products and periods."""
+
     with refdata.session_manager.db_session_scope() as session:
         products = [
             futures_product_from_orm(product_orm)
@@ -258,12 +259,14 @@ def initialise_futures_contracts(
     with refdata.session_manager.db_session_scope() as session:
         periods = {
             period_orm.period_id: period_from_orm(period_orm)
-            for period_orm in session.query(PeriodORM)
-            .filter(
-                PeriodORM.first_date >= start_date,
-                PeriodORM.last_date <= end_date,
+            for period_orm in (
+                session.query(PeriodORM)
+                .filter(
+                    PeriodORM.first_date >= start_date,
+                    PeriodORM.last_date <= end_date,
+                )
+                .all()
             )
-            .all()
         }
 
     if not periods:
@@ -272,14 +275,37 @@ def initialise_futures_contracts(
         )
 
     contracts: list[FuturesContract] = []
+
     for product in products:
+        source_product = refdata.product_factory.require(
+            product.product_id,
+        )
+
+        if source_product != product:
+            raise ValueError(
+                "Persisted FuturesProduct does not match loaded source "
+                f"specification for product_id {product.product_id!r}"
+            )
+
+        contract_rules = refdata.product_factory.get_contract_rules(
+            product.product_id,
+        )
+
         contracts.extend(
-            refdata.contract_factory.create_contracts_for_product(product, periods)
+            refdata.contract_factory.create_contracts_for_product(
+                product=product,
+                contract_rules=contract_rules,
+                available_periods=periods,
+            )
         )
 
     with refdata.session_manager.db_session_scope() as session:
         for contract in contracts:
-            session.add(futures_contract_to_orm(contract=contract))
+            session.add(
+                futures_contract_to_orm(
+                    contract=contract,
+                )
+            )
 
 
 def is_table_empty(
