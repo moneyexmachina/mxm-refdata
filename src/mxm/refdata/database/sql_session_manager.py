@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -56,9 +56,9 @@ class SQLSessionManager:
         Returns:
             Configured database session manager.
         """
-        _ensure_sqlite_parent_dir(db_url)
+        normalised_db_url = _normalise_sqlite_db_url(db_url)
 
-        engine = create_engine(db_url, echo=echo)
+        engine = create_engine(normalised_db_url, echo=echo)
         session_factory = sessionmaker(
             autocommit=False,
             autoflush=False,
@@ -83,7 +83,7 @@ class SQLSessionManager:
         return self.session_factory()
 
     @contextmanager
-    def db_session_scope(self) -> Iterator[Session]:
+    def db_session_scope(self) -> Generator[Session]:
         """Provide a transactional database session scope.
 
         The yielded session is committed on successful exit, rolled back on
@@ -148,21 +148,19 @@ class SQLSessionManager:
             return False
 
 
-def _ensure_sqlite_parent_dir(sql_db_url: str) -> None:
-    """Ensure parent directory existence for absolute-path SQLite URLs.
-
-    This helper applies only to SQLite URLs of the form
-    ``sqlite:////absolute/path/to/db.sqlite``. Other database URLs are ignored.
-    """
+def _normalise_sqlite_db_url(sql_db_url: str) -> str:
+    """Expand user paths and ensure parent dirs for file-based SQLite URLs."""
     prefix = "sqlite:///"
     if not sql_db_url.startswith(prefix):
-        return
+        return sql_db_url
 
     raw_path = sql_db_url[len(prefix) :]
-    if not raw_path:
-        return
+    if not raw_path or raw_path == ":memory:":
+        return sql_db_url
 
-    db_path = Path(raw_path)
+    db_path = Path(raw_path).expanduser()
 
     if db_path.is_absolute():
         db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    return f"{prefix}{db_path}"
