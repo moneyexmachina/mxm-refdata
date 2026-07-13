@@ -119,7 +119,7 @@ def initialise_futures_products(
         raise ValueError("Database already contains products. Run rebuild first.")
 
     root = json_root or refdata.config["REFDATA_FUTURES_PRODUCTS_JSON_ROOT"]
-    products = refdata.product_factory.initialise_from_json(root)
+    products = refdata.product_factory.initialise(root)
 
     with refdata.session_manager.db_session_scope() as session:
         for product in products:

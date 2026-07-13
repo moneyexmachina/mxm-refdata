@@ -1,39 +1,51 @@
-"""
-Factory for FuturesProduct instances.
+"""Factory and interning cache for futures product specifications.
 
 Semantics
 ---------
-- This factory provides *interning*: at most one FuturesProduct instance per
-  product_id within this process.
-- It may be initialised from CSV for convenience.
-- It also supports construction from a typed dict payload (useful for tests),
-  but the preferred path is to parse into FuturesProduct and then intern.
+- At most one canonical FuturesProduct instance exists per product_id.
+- At most one canonical FuturesProductSpec instance exists per product_id.
+- JSON initialisation loads complete FuturesProductSpec objects.
+- A cached FuturesProductSpec always references the canonical cached
+  FuturesProduct instance.
+- Conflicting products or specifications with the same product_id are rejected.
+- Controlled programmatic construction of standalone FuturesProduct instances
+  remains available primarily for tests and fixtures.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
 from mxm.config import MXMConfig
 from mxm.refdata.models.currencies import Currency
 from mxm.refdata.models.periods import PeriodType
-from mxm.refdata.models.products.futures_product import FuturesProduct, SettlementMethod
+from mxm.refdata.models.products.futures_product import (
+    FuturesProduct,
+    SettlementMethod,
+)
+from mxm.refdata.models.products.futures_product_spec import (
+    ContractRules,
+    FuturesProductProvenance,
+    FuturesProductSourceStatus,
+    FuturesProductSpec,
+)
 from mxm.refdata.models.units import ProductUnit
 from mxm.refdata.parsing.futures_product import (
-    build_futures_products,
+    parse_futures_product_specs,
 )
 
 
-class FuturesProductSpec(TypedDict, total=False):
-    """
-    Typed input payload for creating FuturesProduct instances.
+class FuturesProductCreateParams(TypedDict, total=False):
+    """Typed constructor parameters for controlled product creation.
 
-    Intended primarily for tests/fixtures and controlled programmatic creation.
+    This payload is intended primarily for tests, fixtures, and controlled
+    programmatic construction.
 
-    Notes:
-      - This is *not* persisted format.
-      - period_types must already be canonical: tuple[PeriodType, ...].
+    It is not the persisted product-specification format.
+
+    ``period_types`` must already be in its canonical domain representation.
     """
 
     product_id: str
@@ -57,90 +69,226 @@ class FuturesProductSpec(TypedDict, total=False):
 
 
 class FuturesProductFactory:
-    """Factory / interning cache for FuturesProduct instances."""
+    """Factory and interning cache for futures products and specifications."""
 
     def __init__(self) -> None:
-        """Initialise an empty product interning cache."""
-        self._cache: dict[str, FuturesProduct] = {}
+        """Initialise empty product and specification caches."""
 
-    # -------------------------
-    # Core cache operations
-    # -------------------------
+        self._products: dict[str, FuturesProduct] = {}
+        self._specs: dict[str, FuturesProductSpec] = {}
+
+    # -----------------------------------------------------------------
+    # Product cache
+    # -----------------------------------------------------------------
 
     def intern(self, product: FuturesProduct) -> FuturesProduct:
+        """Return the canonical product instance for ``product.product_id``.
+
+        A second equal product resolves to the existing canonical instance.
+
+        A structurally different product with the same product_id is rejected,
+        because silently accepting it would make the resulting object graph
+        depend on insertion order.
         """
-        Return the canonical FuturesProduct instance for product.product_id.
-        """
-        cached = self._cache.get(product.product_id)
+
+        cached = self._products.get(product.product_id)
+
         if cached is None:
-            self._cache[product.product_id] = product
+            self._products[product.product_id] = product
             return product
+
+        if cached != product:
+            raise ValueError(
+                "Conflicting FuturesProduct definitions for product_id "
+                f"{product.product_id!r}"
+            )
+
         return cached
 
     def get(self, product_id: str) -> FuturesProduct | None:
-        """Return product if present, else None."""
-        return self._cache.get(product_id)
+        """Return a cached product, or ``None`` if it is unknown."""
+
+        return self._products.get(product_id)
 
     def require(self, product_id: str) -> FuturesProduct:
-        """Return product if present, else raise."""
-        p = self._cache.get(product_id)
-        if p is None:
+        """Return a cached product or raise ``KeyError``."""
+
+        product = self.get(product_id)
+
+        if product is None:
             raise KeyError(f"Unknown product_id: {product_id!r}")
-        return p
+
+        return product
 
     def all(self) -> list[FuturesProduct]:
-        """Return all cached products (order not guaranteed)."""
-        return list(self._cache.values())
+        """Return all cached products in insertion order."""
 
-    def clear(self) -> None:
-        """Clear the cache (useful in tests)."""
-        self._cache.clear()
+        return list(self._products.values())
 
-    # -------------------------
-    # Construction helpers
-    # -------------------------
+    # -----------------------------------------------------------------
+    # Specification cache
+    # -----------------------------------------------------------------
 
-    def create_from_spec(self, spec: FuturesProductSpec) -> FuturesProduct:
+    def intern_spec(
+        self,
+        spec: FuturesProductSpec,
+    ) -> FuturesProductSpec:
+        """Intern a complete product specification.
+
+        The nested product is interned first. If an equal but non-identical
+        product instance was already cached, the stored specification is
+        rebuilt to reference the canonical product instance.
         """
-        Create (and intern) a FuturesProduct from a typed spec payload.
 
-        This is useful for tests, fixtures, and programmatic creation.
+        canonical_product = self.intern(spec.product)
 
-        Requirements:
-          - spec must include product_id and all required FuturesProduct fields.
-          - period_types must be a tuple[PeriodType, ...] (canonical).
-        """
-        if "product_id" not in spec or not spec["product_id"]:
-            raise ValueError("FuturesProductSpec requires non-empty 'product_id'")
-
-        # TypedDict is total=False, so we need to trust the caller for required keys.
-        # This is intended for controlled/test usage.
-        product = FuturesProduct(**cast(dict[str, Any], spec))  # safe boundary
-        return self.intern(product)
-
-    def initialise(self, source: str, path: str) -> list[FuturesProduct]:
-        return (
-            self.initialise_from_json(path)
-            if source == "json"
-            else self.initialise_from_csv(path)
+        canonical_spec = (
+            spec
+            if spec.product is canonical_product
+            else replace(
+                spec,
+                product=canonical_product,
+            )
         )
 
-    def initialise_from_csv(self, file_path: str) -> list[FuturesProduct]:
-        """Legacy CSV loader (kept for compatibility)."""
+        cached = self._specs.get(spec.product_id)
 
-        products = build_futures_products(Path(file_path), source="csv")
+        if cached is None:
+            self._specs[spec.product_id] = canonical_spec
+            return canonical_spec
 
-        return [self.intern(p) for p in products]
+        if cached != canonical_spec:
+            raise ValueError(
+                "Conflicting FuturesProductSpec definitions for product_id "
+                f"{spec.product_id!r}"
+            )
 
-    def initialise_from_json(self, root_dir: str) -> list[FuturesProduct]:
-        """Load products from JSON directory and intern them into cache."""
+        return cached
 
-        products = build_futures_products(Path(root_dir).expanduser(), source="json")
+    def get_spec(
+        self,
+        product_id: str,
+    ) -> FuturesProductSpec | None:
+        """Return a cached complete specification, if available."""
 
-        return [self.intern(p) for p in products]
+        return self._specs.get(product_id)
+
+    def require_spec(
+        self,
+        product_id: str,
+    ) -> FuturesProductSpec:
+        """Return a cached complete specification or raise ``KeyError``."""
+
+        spec = self.get_spec(product_id)
+
+        if spec is None:
+            raise KeyError(
+                f"Unknown futures product specification for product_id: {product_id!r}"
+            )
+
+        return spec
+
+    def all_specs(self) -> list[FuturesProductSpec]:
+        """Return all cached specifications in insertion order."""
+
+        return list(self._specs.values())
+
+    # -----------------------------------------------------------------
+    # Specification projections
+    # -----------------------------------------------------------------
+
+    def get_contract_rules(
+        self,
+        product_id: str,
+    ) -> ContractRules:
+        """Return the contract-construction rules for a product."""
+
+        return self.require_spec(product_id).contract_rules
+
+    def get_provenance(
+        self,
+        product_id: str,
+    ) -> FuturesProductProvenance:
+        """Return the provenance associated with a product specification."""
+
+        return self.require_spec(product_id).provenance
+
+    def get_source_status(
+        self,
+        product_id: str,
+    ) -> FuturesProductSourceStatus:
+        """Return the source lifecycle status for a product specification."""
+
+        return self.require_spec(product_id).source_status
+
+    # -----------------------------------------------------------------
+    # Controlled programmatic construction
+    # -----------------------------------------------------------------
+
+    def create_from_params(
+        self,
+        params: FuturesProductCreateParams,
+    ) -> FuturesProduct:
+        """Construct and intern a standalone FuturesProduct.
+
+        This path is intended primarily for tests, fixtures, and controlled
+        programmatic creation. It does not create a FuturesProductSpec, so
+        specification-dependent accessors such as ``get_contract_rules`` will
+        remain unavailable for the resulting product.
+        """
+
+        product_id = params.get("product_id")
+
+        if not product_id:
+            raise ValueError(
+                "FuturesProductCreateParams requires a non-empty 'product_id'"
+            )
+
+        product = FuturesProduct(
+            **cast(dict[str, Any], params),
+        )
+
+        return self.intern(product)
+
+    # -----------------------------------------------------------------
+    # Initialisation
+    # -----------------------------------------------------------------
+
+    def initialise(
+        self,
+        root_dir: str,
+    ) -> list[FuturesProduct]:
+        """Load and intern specifications from a JSON directory."""
+
+        specs = parse_futures_product_specs(
+            Path(root_dir).expanduser(),
+        )
+
+        canonical_specs = [self.intern_spec(spec) for spec in specs]
+
+        return [spec.product for spec in canonical_specs]
 
     @classmethod
-    def from_config(cls, config: MXMConfig) -> FuturesProductFactory:
+    def from_config(
+        cls,
+        config: MXMConfig,
+    ) -> FuturesProductFactory:
+        """Construct and initialise a factory from MXM configuration."""
+
         factory = cls()
-        factory.initialise_from_json(config["REFDATA_FUTURES_PRODUCTS_JSON_ROOT"])
+
+        factory.initialise(
+            config["REFDATA_FUTURES_PRODUCTS_JSON_ROOT"],
+        )
+
         return factory
+
+    # -----------------------------------------------------------------
+    # Cache lifecycle
+    # -----------------------------------------------------------------
+
+    def clear(self) -> None:
+        """Clear all cached products and specifications."""
+
+        self._products.clear()
+        self._specs.clear()

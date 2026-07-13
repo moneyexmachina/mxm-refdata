@@ -30,7 +30,76 @@ from mxm.refdata.models.orm.period_cycles import (
 from mxm.refdata.models.orm.periods import PeriodORM
 from mxm.refdata.models.periods import PeriodType
 from mxm.refdata.models.products.futures_product import FuturesProduct, SettlementMethod
+from mxm.refdata.models.products.futures_product_spec import (
+    ContractRules,
+    FirstDayOfInterestRule,
+    FirstDayOfInterestShiftRule,
+    FuturesProductProvenance,
+    FuturesProductSourceStatus,
+    FuturesProductSpec,
+    LastTradingRule,
+)
+from mxm.refdata.models.reference_events import ReferenceEvent
 from mxm.refdata.models.units import ProductUnit
+
+
+@pytest.fixture
+def futures_product_specs(
+    futures_products: list[FuturesProduct],
+) -> list[FuturesProductSpec]:
+    """Provide complete specifications for the test futures products."""
+
+    return [
+        FuturesProductSpec(
+            schema_version="futures_product.v1",
+            product_id=product.product_id,
+            asset_class="futures",
+            source_status=FuturesProductSourceStatus(
+                created_at=date(2026, 7, 13),
+                updated_at=date(2026, 7, 13),
+                review_status="draft",
+                curator="mxm",
+            ),
+            provenance=FuturesProductProvenance(
+                source_type="test_fixture",
+                source_url="https://example.com/test-product",
+                source_accessed_at=date(2026, 7, 13),
+                curation_method="test_fixture",
+                assistance="none",
+                notes=(),
+            ),
+            product=product,
+            contract_rules=ContractRules(
+                last_trading_rule=LastTradingRule(
+                    period_offset=0,
+                    reference_event=(ReferenceEvent.BUSINESS_DAY_OF_PERIOD),
+                    n_reference=-3,
+                    business_day_offset=0,
+                ),
+                first_day_of_interest_rule=FirstDayOfInterestRule(
+                    shift_rule=FirstDayOfInterestShiftRule(
+                        shift_period_type=PeriodType.MONTH,
+                        n_shift={
+                            "Jan": 24,
+                            "Feb": 24,
+                            "Mar": 24,
+                            "Apr": 24,
+                            "May": 24,
+                            "Jun": 24,
+                            "Jul": 24,
+                            "Aug": 24,
+                            "Sep": 24,
+                            "Oct": 24,
+                            "Nov": 24,
+                            "Dec": 24,
+                        },
+                    ),
+                    reference_rule="next_b_day_after_period",
+                ),
+            ),
+        )
+        for product in futures_products
+    ]
 
 
 @dataclass
@@ -114,12 +183,13 @@ def refdata(
     refdata_config: MXMConfig,
     session_manager: SQLSessionManager,
     mocker: MockerFixture,
-    futures_products: list[FuturesProduct],
+    futures_product_specs: list[FuturesProductSpec],
 ) -> RefDataFixture:
     """Provide a minimal refdata runtime fixture."""
+
     mocker.patch(
-        "mxm.refdata.factories.futures_product_factory.build_futures_products",
-        return_value=futures_products,
+        ("mxm.refdata.factories.futures_product_factory.parse_futures_product_specs"),
+        return_value=futures_product_specs,
     )
 
     return RefDataFixture(

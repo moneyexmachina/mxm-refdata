@@ -57,10 +57,9 @@ def test_build_refdata_from_runtime_context(
 ) -> None:
     """build_refdata should compose a RefData runtime from RuntimeContext."""
     mocker.patch(
-        "mxm.refdata.factories.futures_product_factory.build_futures_products",
+        ("mxm.refdata.factories.futures_product_factory.parse_futures_product_specs"),
         return_value=[],
     )
-
     refdata = build_refdata(runtime_context)
 
     assert isinstance(refdata, RefData)
