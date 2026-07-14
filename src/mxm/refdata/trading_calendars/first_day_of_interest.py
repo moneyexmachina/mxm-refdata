@@ -91,6 +91,22 @@ def calculate_first_day_of_interest(
                 trading_calendar=trading_calendar,
                 rule=last_trading_rule,
             )
+        case "next_b_day_after_last_trading_day_of_november":
+            november_period = PeriodFactory.get_period(
+                date_obj=date(
+                    shifted_period.last_date.year,
+                    11,
+                    1,
+                ),
+                period_type=rule.shift_rule.shift_period_type,
+            )
+
+            reference_date = calculate_last_trading_day(
+                product_id=product_id,
+                period=november_period,
+                trading_calendar=trading_calendar,
+                rule=last_trading_rule,
+            )
 
         case "next_b_day_after_period":
             reference_date = shifted_period.last_date
