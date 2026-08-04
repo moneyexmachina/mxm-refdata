@@ -219,3 +219,34 @@ def test_environment_and_role_are_passed_to_refdata_helper(
 
     assert result.exit_code == 0
     mocked_refdata.assert_called_once_with(environment="prod", role="admin")
+
+
+def test_preflight_exits_successfully_when_report_passes(
+    mocker: MockerFixture,
+) -> None:
+    check = Mock()
+    check.passed = True
+    check.name = "application composed"
+    check.message = ""
+
+    report = Mock()
+    report.checks = (check,)
+    report.passed = True
+
+    mocker.patch(
+        "mxm.refdata.cli.build_runtime_identity",
+        return_value=Mock(),
+    )
+    mocker.patch(
+        "mxm.refdata.cli.build_runtime_context",
+        return_value=Mock(),
+    )
+    run_preflight = mocker.patch(
+        "mxm.refdata.cli.run_preflight",
+        return_value=report,
+    )
+
+    result = runner.invoke(app, ["preflight"])
+
+    assert result.exit_code == 0
+    run_preflight.assert_called_once()

@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 from mxm.refdata.composition import build_refdata
+from mxm.refdata.preflight import run_preflight
 from mxm.refdata.runtime import RefData
 from mxm.runtime import build_runtime_context, build_runtime_identity
 
@@ -256,6 +257,35 @@ def smokecheck(
     for result in report.results:
         status = "[green]PASS[/]" if result.status == "pass" else "[red]FAIL[/]"
         table.add_row(status, result.name, result.message)
+
+    console.print(table)
+
+    if not report.passed:
+        raise typer.Exit(code=1)
+
+
+@app.command("preflight")
+def preflight(
+    environment: EnvironmentOption = "dev",
+    role: RoleOption = "default",
+) -> None:
+    """Check whether mxm-refdata can operate in the selected runtime."""
+    identity = build_runtime_identity(
+        app="mxm-refdata",
+        environment=environment,
+        role=role,
+    )
+    ctx = build_runtime_context(identity=identity)
+    report = run_preflight(ctx)
+
+    table = Table(title="MXM Refdata Preflight")
+    table.add_column("Status")
+    table.add_column("Check")
+    table.add_column("Message")
+
+    for check in report.checks:
+        status = "[green]PASS[/]" if check.passed else "[red]FAIL[/]"
+        table.add_row(status, check.name, check.message)
 
     console.print(table)
 
