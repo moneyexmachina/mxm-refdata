@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy.engine import make_url
-
 from mxm.config import make_view
 from mxm.refdata.composition import build_refdata
 from mxm.runtime import RuntimeContext
@@ -93,23 +91,27 @@ def run_preflight(ctx: RuntimeContext) -> PreflightReport:
 
     checks.append(PreflightCheck("application composed", True))
 
-    db_url = make_url(config["SQL_DB_URL"])
+    engine = refdata.session_manager.get_engine()
+    db_url = engine.url
+    masked_db_url = db_url.render_as_string(hide_password=True)
+
     is_postgresql = db_url.get_backend_name() == "postgresql"
 
     checks.append(
         PreflightCheck(
             "PostgreSQL selected",
             is_postgresql,
-            db_url.render_as_string(hide_password=True),
+            masked_db_url,
         )
     )
 
     database_reachable = refdata.session_manager.check_db_connection()
+
     checks.append(
         PreflightCheck(
             "database reachable",
             database_reachable,
-            db_url.render_as_string(hide_password=True),
+            masked_db_url,
         )
     )
 

@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 from pytest_mock import MockerFixture
+from sqlalchemy.engine import make_url
 
 from mxm.config import MXMConfig, make_subconfig
 from mxm.refdata.preflight import (
@@ -91,10 +92,15 @@ def _get_check(
 def _patch_refdata(
     mocker: MockerFixture,
     *,
+    db_url: str,
     database_reachable: bool = True,
 ) -> Mock:
-    """Patch application composition with a controllable database result."""
+    """Patch application composition with a controllable database."""
+    engine = Mock()
+    engine.url = make_url(db_url)
+
     session_manager = Mock()
+    session_manager.get_engine.return_value = engine
     session_manager.check_db_connection.return_value = database_reachable
 
     refdata = Mock()
@@ -151,7 +157,14 @@ def test_preflight_expands_product_source_tilde(
             },
         ),
     )
-    _patch_refdata(mocker)
+    _patch_refdata(
+        mocker,
+        db_url=(
+            "postgresql+psycopg://mxm_dev_app:secret"
+            "@postgres.example.invalid:5432/mxm_dev"
+        ),
+        database_reachable=True,
+    )
 
     report = run_preflight(runtime_context)
 
@@ -251,6 +264,7 @@ def test_preflight_rejects_sqlite_as_operational_backend(
     )
     _patch_refdata(
         mocker,
+        db_url=f"sqlite:///{sqlite_path}",
         database_reachable=True,
     )
 
@@ -289,6 +303,10 @@ def test_preflight_accepts_postgresql_backend(
     )
     _patch_refdata(
         mocker,
+        db_url=(
+            "postgresql+psycopg://mxm_dev_app:secret"
+            "@postgres.example.invalid:5432/mxm_dev"
+        ),
         database_reachable=True,
     )
 
@@ -328,6 +346,10 @@ def test_preflight_reports_database_connectivity_failure(
     )
     _patch_refdata(
         mocker,
+        db_url=(
+            "postgresql+psycopg://mxm_dev_app:secret"
+            "@postgres.example.invalid:5432/mxm_dev"
+        ),
         database_reachable=False,
     )
 
