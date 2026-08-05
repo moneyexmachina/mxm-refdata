@@ -41,6 +41,27 @@ from mxm.refdata.models.products.futures_product_spec import (
 )
 from mxm.refdata.models.reference_events import ReferenceEvent
 from mxm.refdata.models.units import ProductUnit
+from mxm.refdata.parsing.futures_product import LoadedFuturesProductSpec
+from mxm.types import JSONObj
+
+
+def _make_loaded_spec(
+    spec: FuturesProductSpec,
+) -> LoadedFuturesProductSpec:
+    """Wrap a typed specification with representative source identity."""
+
+    canonical_document: JSONObj = {
+        "schema_version": spec.schema_version,
+        "product_id": spec.product_id,
+        "asset_class": spec.asset_class,
+    }
+
+    return LoadedFuturesProductSpec(
+        specification=spec,
+        source_relative_path=f"test/{spec.product_id}.json",
+        canonical_document=canonical_document,
+        specification_digest="a" * 64,
+    )
 
 
 @pytest.fixture
@@ -186,12 +207,12 @@ def refdata(
     futures_product_specs: list[FuturesProductSpec],
 ) -> RefDataFixture:
     """Provide a minimal refdata runtime fixture."""
+    loaded_specs = [_make_loaded_spec(spec) for spec in futures_product_specs]
 
     mocker.patch(
-        ("mxm.refdata.factories.futures_product_factory.parse_futures_product_specs"),
-        return_value=futures_product_specs,
+        "mxm.refdata.factories.futures_product_factory.load_futures_product_specs",
+        return_value=loaded_specs,
     )
-
     return RefDataFixture(
         config=refdata_config,
         session_manager=session_manager,

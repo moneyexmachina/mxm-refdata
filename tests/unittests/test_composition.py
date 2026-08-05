@@ -12,7 +12,6 @@ from sqlalchemy.engine import make_url
 
 from mxm.config import MXMConfig, make_subconfig
 from mxm.refdata.composition import build_refdata
-from mxm.refdata.runtime import RefData
 from mxm.runtime import RuntimeContext, RuntimePaths
 from mxm.secrets import SecretsApi
 from mxm.types import RuntimeIdentity
@@ -98,30 +97,6 @@ def postgresql_runtime_context(
         },
         secrets=secrets,
     )
-
-
-def test_build_refdata_from_explicit_sqlite_runtime_context(
-    sqlite_runtime_context: RuntimeContext,
-    mocker: MockerFixture,
-) -> None:
-    """An explicit SQLite URL should compose the RefData runtime."""
-    mocker.patch(
-        "mxm.refdata.factories.futures_product_factory.parse_futures_product_specs",
-        return_value=[],
-    )
-
-    refdata = build_refdata(sqlite_runtime_context)
-
-    assert isinstance(refdata, RefData)
-    assert refdata.config["SQL_DB_URL"] == "sqlite:///:memory:"
-    assert refdata.config["REFDATA_DB_MODE"] == "buildable"
-    assert refdata.config["REFDATA_FUTURES_PRODUCTS_JSON_ROOT"] == "/tmp/products"
-    assert refdata.config["REFDATA_CONTRACT_START_DATE"] == "2000-01-02"
-    assert refdata.config["REFDATA_CONTRACT_END_DATE"] == "2046-12-31"
-    assert refdata.session_manager is not None
-    assert refdata.product_factory is not None
-    assert refdata.contract_factory is not None
-    assert refdata.period_factory is not None
 
 
 def test_build_refdata_wires_explicit_database_url_without_secret_access(

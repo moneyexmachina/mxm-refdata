@@ -13,7 +13,9 @@ external representation and reconstructs typed domain objects immediately.
 
 from __future__ import annotations
 
+import hashlib
 import json
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -38,6 +40,17 @@ from mxm.refdata.models.weekdays import Weekday
 from mxm.refdata.utils.period_types_codec import decode_period_types
 from mxm.types import JSONObj, JSONValue
 
+
+@dataclass(frozen=True)
+class LoadedFuturesProductSpec:
+    """One validated futures-product specification with source identity."""
+
+    specification: FuturesProductSpec
+    source_relative_path: str
+    canonical_document: JSONObj
+    specification_digest: str
+
+
 # ---------------------------------------------------------------------
 # JSON BOUNDARY HELPERS
 # ---------------------------------------------------------------------
@@ -56,6 +69,27 @@ def _load_json_object(file_path: Path) -> JSONObj:
         )
 
     return raw
+
+
+def _canonicalise_json_object(
+    document: JSONObj,
+) -> tuple[JSONObj, str]:
+    """Return a canonical JSON document and its SHA-256 content digest."""
+
+    canonical_json = json.dumps(
+        document,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    canonical_value: JSONValue = json.loads(canonical_json)
+
+    if not isinstance(canonical_value, dict):
+        raise AssertionError("Canonical JSON object unexpectedly became non-object")
+
+    specification_digest = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+
+    return canonical_value, specification_digest
 
 
 def _require_object(
@@ -626,18 +660,16 @@ def _parse_contract_rules(
 
 
 # ---------------------------------------------------------------------
-# PUBLIC PARSING API
+# SPECIFICATION DOCUMENT CONSTRUCTION
 # ---------------------------------------------------------------------
 
 
-def parse_futures_product_spec(
-    file_path: Path,
+def _parse_futures_product_spec_document(
+    raw: JSONObj,
+    *,
+    context: str,
 ) -> FuturesProductSpec:
-    """Parse one curated futures-product JSON document."""
-
-    path = file_path.expanduser()
-    raw = _load_json_object(path)
-    context = str(path)
+    """Reconstruct a typed specification from a loaded JSON object."""
 
     product_data = _require_object(
         raw,
@@ -697,12 +729,49 @@ def parse_futures_product_spec(
     )
 
 
-def parse_futures_product_specs(
-    root_dir: Path,
-) -> list[FuturesProductSpec]:
-    """Recursively parse all futures-product JSON files below a root."""
+# ---------------------------------------------------------------------
+# PUBLIC LOADING AND PARSING API
+# ---------------------------------------------------------------------
 
-    root = root_dir.expanduser()
+
+def load_futures_product_spec(
+    file_path: Path,
+    *,
+    root_dir: Path,
+) -> LoadedFuturesProductSpec:
+    """Load one specification together with stable source identity."""
+
+    root = root_dir.expanduser().resolve()
+    path = file_path.expanduser().resolve()
+
+    try:
+        source_relative_path = path.relative_to(root).as_posix()
+    except ValueError as exc:
+        raise ValueError(
+            f"Futures product specification {path} is not below source root {root}"
+        ) from exc
+
+    raw = _load_json_object(path)
+    canonical_document, specification_digest = _canonicalise_json_object(raw)
+    specification = _parse_futures_product_spec_document(
+        canonical_document,
+        context=str(path),
+    )
+
+    return LoadedFuturesProductSpec(
+        specification=specification,
+        source_relative_path=source_relative_path,
+        canonical_document=canonical_document,
+        specification_digest=specification_digest,
+    )
+
+
+def load_futures_product_specs(
+    root_dir: Path,
+) -> list[LoadedFuturesProductSpec]:
+    """Recursively load all specifications below a source root."""
+
+    root = root_dir.expanduser().resolve()
 
     if not root.exists():
         raise ValueError(f"Futures product JSON root does not exist: {root}")
@@ -715,20 +784,52 @@ def parse_futures_product_specs(
     if not file_paths:
         raise ValueError(f"No futures product JSON files found below: {root}")
 
-    specs = [parse_futures_product_spec(file_path) for file_path in file_paths]
+    loaded_specs = [
+        load_futures_product_spec(
+            file_path,
+            root_dir=root,
+        )
+        for file_path in file_paths
+    ]
 
     seen_product_ids: set[str] = set()
 
-    for spec in specs:
-        if spec.product_id in seen_product_ids:
+    for loaded_spec in loaded_specs:
+        product_id = loaded_spec.specification.product_id
+
+        if product_id in seen_product_ids:
             raise ValueError(
-                "Duplicate futures product specification for "
-                f"product_id {spec.product_id!r}"
+                f"Duplicate futures product specification for product_id {product_id!r}"
             )
 
-        seen_product_ids.add(spec.product_id)
+        seen_product_ids.add(product_id)
 
-    return specs
+    return loaded_specs
+
+
+def parse_futures_product_spec(
+    file_path: Path,
+) -> FuturesProductSpec:
+    """Parse one curated futures-product JSON document."""
+
+    path = file_path.expanduser()
+    raw = _load_json_object(path)
+
+    return _parse_futures_product_spec_document(
+        raw,
+        context=str(path),
+    )
+
+
+def parse_futures_product_specs(
+    root_dir: Path,
+) -> list[FuturesProductSpec]:
+    """Recursively parse all futures-product JSON files below a root."""
+
+    return [
+        loaded_spec.specification
+        for loaded_spec in load_futures_product_specs(root_dir)
+    ]
 
 
 def build_futures_products(

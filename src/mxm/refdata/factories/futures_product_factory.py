@@ -33,7 +33,8 @@ from mxm.refdata.models.products.futures_product_spec import (
 )
 from mxm.refdata.models.units import ProductUnit
 from mxm.refdata.parsing.futures_product import (
-    parse_futures_product_specs,
+    LoadedFuturesProductSpec,
+    load_futures_product_specs,
 )
 
 
@@ -76,6 +77,7 @@ class FuturesProductFactory:
 
         self._products: dict[str, FuturesProduct] = {}
         self._specs: dict[str, FuturesProductSpec] = {}
+        self._loaded_specs: dict[str, LoadedFuturesProductSpec] = {}
 
     # -----------------------------------------------------------------
     # Product cache
@@ -165,6 +167,49 @@ class FuturesProductFactory:
 
         return cached
 
+    def intern_loaded_spec(
+        self,
+        loaded_spec: LoadedFuturesProductSpec,
+    ) -> LoadedFuturesProductSpec:
+        """Intern a loaded specification together with its source identity.
+
+        The nested FuturesProductSpec is interned first. If canonicalisation
+        replaces the specification instance, the loaded specification is rebuilt
+        to reference that canonical instance.
+
+        Repeated equal loaded specifications resolve to the existing cached
+        instance. Conflicting source artefacts for the same product_id are
+        rejected.
+        """
+
+        canonical_spec = self.intern_spec(
+            loaded_spec.specification,
+        )
+
+        canonical_loaded_spec = (
+            loaded_spec
+            if loaded_spec.specification is canonical_spec
+            else replace(
+                loaded_spec,
+                specification=canonical_spec,
+            )
+        )
+
+        product_id = canonical_spec.product_id
+        cached = self._loaded_specs.get(product_id)
+
+        if cached is None:
+            self._loaded_specs[product_id] = canonical_loaded_spec
+            return canonical_loaded_spec
+
+        if cached != canonical_loaded_spec:
+            raise ValueError(
+                "Conflicting LoadedFuturesProductSpec definitions for "
+                f"product_id {product_id!r}"
+            )
+
+        return cached
+
     def get_spec(
         self,
         product_id: str,
@@ -192,6 +237,35 @@ class FuturesProductFactory:
         """Return all cached specifications in insertion order."""
 
         return list(self._specs.values())
+
+    def get_loaded_spec(
+        self,
+        product_id: str,
+    ) -> LoadedFuturesProductSpec | None:
+        """Return a cached loaded specification, if available."""
+
+        return self._loaded_specs.get(product_id)
+
+    def require_loaded_spec(
+        self,
+        product_id: str,
+    ) -> LoadedFuturesProductSpec:
+        """Return a cached loaded specification or raise ``KeyError``."""
+
+        loaded_spec = self.get_loaded_spec(product_id)
+
+        if loaded_spec is None:
+            raise KeyError(
+                "Unknown loaded futures product specification for "
+                f"product_id: {product_id!r}"
+            )
+
+        return loaded_spec
+
+    def all_loaded_specs(self) -> list[LoadedFuturesProductSpec]:
+        """Return all cached loaded specifications in insertion order."""
+
+        return list(self._loaded_specs.values())
 
     # -----------------------------------------------------------------
     # Specification projections
@@ -253,20 +327,23 @@ class FuturesProductFactory:
     # -----------------------------------------------------------------
     # Initialisation
     # -----------------------------------------------------------------
-
     def initialise(
         self,
         root_dir: str,
     ) -> list[FuturesProduct]:
         """Load and intern specifications from a JSON directory."""
 
-        specs = parse_futures_product_specs(
+        loaded_specs = load_futures_product_specs(
             Path(root_dir).expanduser(),
         )
 
-        canonical_specs = [self.intern_spec(spec) for spec in specs]
+        canonical_loaded_specs = [
+            self.intern_loaded_spec(loaded_spec) for loaded_spec in loaded_specs
+        ]
 
-        return [spec.product for spec in canonical_specs]
+        return [
+            loaded_spec.specification.product for loaded_spec in canonical_loaded_specs
+        ]
 
     @classmethod
     def from_config(
@@ -292,3 +369,4 @@ class FuturesProductFactory:
 
         self._products.clear()
         self._specs.clear()
+        self._loaded_specs.clear()

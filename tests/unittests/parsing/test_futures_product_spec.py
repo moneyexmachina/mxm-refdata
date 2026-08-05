@@ -21,6 +21,8 @@ from mxm.refdata.models.units import ProductUnit
 from mxm.refdata.models.weekdays import Weekday
 from mxm.refdata.parsing.futures_product import (
     build_futures_products,
+    load_futures_product_spec,
+    load_futures_product_specs,
     parse_futures_product_spec,
     parse_futures_product_specs,
 )
@@ -650,6 +652,153 @@ def test_parse_futures_product_spec_rejects_invalid_source_date_order(
         match="updated_at cannot precede created_at",
     ):
         parse_futures_product_spec(file_path)
+
+
+# ---------------------------------------------------------------------
+# LOADED SPECIFICATION IDENTITY
+# ---------------------------------------------------------------------
+
+
+def test_load_futures_product_spec_preserves_source_identity(
+    tmp_path: Path,
+    valid_product_spec_json: dict[str, Any],
+) -> None:
+    """Load the typed specification together with its source artefact identity."""
+
+    file_path = write_valid_spec(
+        tmp_path,
+        valid_product_spec_json,
+        relative_path="cme/metals/aluminum.json",
+    )
+
+    loaded = load_futures_product_spec(
+        file_path,
+        root_dir=tmp_path,
+    )
+
+    assert loaded.specification.product_id == "comex_aluminum_futures"
+    assert loaded.source_relative_path == "cme/metals/aluminum.json"
+    assert loaded.canonical_document == valid_product_spec_json
+    assert len(loaded.specification_digest) == 64
+    assert all(
+        character in "0123456789abcdef" for character in loaded.specification_digest
+    )
+
+
+def test_load_futures_product_spec_digest_ignores_json_formatting_and_key_order(
+    tmp_path: Path,
+    valid_product_spec_json: dict[str, Any],
+) -> None:
+    """Equivalent JSON documents must have the same specification identity."""
+
+    first_path = tmp_path / "first.json"
+    second_path = tmp_path / "second.json"
+
+    first_path.write_text(
+        json.dumps(
+            valid_product_spec_json,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    reordered_document = {
+        key: valid_product_spec_json[key] for key in reversed(valid_product_spec_json)
+    }
+
+    second_path.write_text(
+        json.dumps(
+            reordered_document,
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+
+    first = load_futures_product_spec(
+        first_path,
+        root_dir=tmp_path,
+    )
+    second = load_futures_product_spec(
+        second_path,
+        root_dir=tmp_path,
+    )
+
+    assert first.canonical_document == second.canonical_document
+    assert first.specification == second.specification
+    assert first.specification_digest == second.specification_digest
+
+
+def test_load_futures_product_spec_digest_changes_with_specification_content(
+    tmp_path: Path,
+    valid_product_spec_json: dict[str, Any],
+) -> None:
+    """A semantic source-document change must produce a new identity."""
+
+    original_document = deepcopy(valid_product_spec_json)
+    changed_document = deepcopy(valid_product_spec_json)
+    changed_document["product"]["tick_size"] = 0.5
+
+    original_path = write_valid_spec(
+        tmp_path,
+        original_document,
+        relative_path="original.json",
+    )
+    changed_path = write_valid_spec(
+        tmp_path,
+        changed_document,
+        relative_path="changed.json",
+    )
+
+    original = load_futures_product_spec(
+        original_path,
+        root_dir=tmp_path,
+    )
+    changed = load_futures_product_spec(
+        changed_path,
+        root_dir=tmp_path,
+    )
+
+    assert original.specification_digest != changed.specification_digest
+    assert original.specification.product.tick_size == 0.25
+    assert changed.specification.product.tick_size == 0.5
+
+
+def test_load_futures_product_specs_returns_loaded_specs_in_path_order(
+    tmp_path: Path,
+    valid_product_spec_json: dict[str, Any],
+) -> None:
+    """Bulk loading must retain deterministic source-relative ordering."""
+
+    product_a = deepcopy(valid_product_spec_json)
+    product_a["product_id"] = "product_a"
+    product_a["product"]["product_id"] = "product_a"
+
+    product_b = deepcopy(valid_product_spec_json)
+    product_b["product_id"] = "product_b"
+    product_b["product"]["product_id"] = "product_b"
+
+    write_valid_spec(
+        tmp_path,
+        product_b,
+        relative_path="z/product_b.json",
+    )
+    write_valid_spec(
+        tmp_path,
+        product_a,
+        relative_path="a/product_a.json",
+    )
+
+    loaded_specs = load_futures_product_specs(tmp_path)
+
+    assert [loaded.source_relative_path for loaded in loaded_specs] == [
+        "a/product_a.json",
+        "z/product_b.json",
+    ]
+
+    assert [loaded.specification.product_id for loaded in loaded_specs] == [
+        "product_a",
+        "product_b",
+    ]
 
 
 # ---------------------------------------------------------------------
