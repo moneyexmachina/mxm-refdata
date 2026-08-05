@@ -24,7 +24,7 @@ def build_refdata(ctx: RuntimeContext) -> RefData:
         resolve=True,
     )
 
-    db_url = _resolve_database_url(
+    db_url = resolve_database_url(
         ctx=ctx,
         config=config,
     )
@@ -40,7 +40,7 @@ def build_refdata(ctx: RuntimeContext) -> RefData:
     )
 
 
-def _resolve_database_url(
+def resolve_database_url(
     *,
     ctx: RuntimeContext,
     config: MXMConfig,
