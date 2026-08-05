@@ -9,6 +9,7 @@ packages = [{ include = "mxm", from = "src" }]
 include = [
     "src/mxm/refdata/py.typed",
     "src/mxm/refdata/data/**/*",
+    "src/mxm/refdata/sql/migrations/*.sql",
 ]
 [tool.poetry.scripts]
 mxm-refdata = "mxm.refdata.cli:app"
