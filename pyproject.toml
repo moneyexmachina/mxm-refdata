@@ -70,6 +70,9 @@ known-first-party = ["mxm"]
 [tool.pytest.ini_options]
 addopts = "-q"
 pythonpath = ["src"]
+markers = [
+    "postgres: tests requiring a real PostgreSQL instance",
+]
 filterwarnings = [
     "ignore:The 'generic' unit for NumPy timedelta is deprecated.*:DeprecationWarning:exchange_calendars\\.utils\\.pandas_utils",
 ]

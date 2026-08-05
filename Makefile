@@ -45,7 +45,7 @@ type:
 	$(RUN) pyright
 
 test:
-	$(RUN) pytest -q
+	$(RUN) pytest -q -m "not postgres"
 
 check: lint type test
 
