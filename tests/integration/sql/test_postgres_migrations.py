@@ -1,30 +1,20 @@
 """PostgreSQL integration tests for packaged reference-data migrations.
 
-These tests resolve the accepted MXM development runtime through
-``mxm-runtime`` and operate only inside uniquely named disposable PostgreSQL
-schemas.
+The shared integration fixtures provide an accepted MXM development runtime
+and a uniquely named disposable PostgreSQL schema.
 
-They may run only against the accepted ``mxm_dev`` database on ``monolith``.
-They never operate against the operational ``refdata`` schema.
+This module deliberately uses the unmigrated ``postgres_database`` fixture so
+that it can prove schema creation, migration application, ledger state, and
+idempotent replay from an empty starting point.
 """
 
 from __future__ import annotations
 
-from collections.abc import Generator
-from uuid import uuid4
-
 import pytest
 from psycopg import sql
 
-from mxm.config import make_view
-from mxm.refdata.composition import resolve_database_url
 from mxm.refdata.sql.migration_runner import MigrationRunner
 from mxm.refdata.sql.postgres import PostgresDatabase, PostgresRow
-from mxm.runtime import (
-    RuntimeContext,
-    build_runtime_context,
-    build_runtime_identity,
-)
 
 type ExecutableQuery = sql.SQL | sql.Composed
 
@@ -51,133 +41,12 @@ _EXPECTED_INDEXES = frozenset(
 )
 
 
-@pytest.fixture
-def runtime_context() -> RuntimeContext:
-    """Build the accepted MXM development runtime context."""
-
-    identity = build_runtime_identity(
-        app="mxm-refdata",
-        environment="dev",
-        role="default",
-    )
-
-    context = build_runtime_context(
-        identity=identity,
-    )
-
-    _require_safe_test_context(context)
-
-    return context
-
-
-@pytest.fixture
-def postgres_database(
-    runtime_context: RuntimeContext,
-) -> Generator[PostgresDatabase]:
-    """Provide a PostgreSQL boundary using a unique disposable schema."""
-
-    config = make_view(
-        runtime_context.config,
-        "mxm_refdata",
-        readonly=True,
-        resolve=True,
-    )
-
-    connection_url = resolve_database_url(
-        ctx=runtime_context,
-        config=config,
-    )
-
-    schema = f"refdata_test_{uuid4().hex[:12]}"
-
-    if not schema.startswith("refdata_test_"):
-        raise RuntimeError(
-            "Refusing to use an unsafe PostgreSQL integration-test schema."
-        )
-
-    database = PostgresDatabase(
-        connection_url,
-        schema=schema,
-    )
-
-    try:
-        yield database
-    finally:
-        _drop_schema(database)
-
-
-def _require_safe_test_context(
-    context: RuntimeContext,
-) -> None:
-    """Reject integration-test execution outside the accepted dev runtime."""
-
-    identity = context.identity
-
-    expected_identity = {
-        "app": "mxm-refdata",
-        "environment": "dev",
-        "machine": "monolith",
-        "substrate": "local-process",
-        "role": "default",
-    }
-
-    actual_identity = {
-        "app": identity.app,
-        "environment": identity.environment,
-        "machine": identity.machine,
-        "substrate": identity.substrate,
-        "role": identity.role,
-    }
-
-    if actual_identity != expected_identity:
-        raise RuntimeError(
-            "PostgreSQL integration tests require the accepted monolith "
-            f"development identity. Expected {expected_identity!r}, "
-            f"got {actual_identity!r}."
-        )
-
-    db_configs = context.db_configs
-
-    if db_configs is None:
-        raise RuntimeError("RuntimeContext does not contain database configuration.")
-
-    try:
-        db_config = db_configs["operational_state"]
-    except KeyError as err:
-        raise RuntimeError(
-            "Database configuration 'operational_state' is missing."
-        ) from err
-
-    expected_database = {
-        "driver": "postgresql",
-        "host": "localhost",
-        "port": 5432,
-        "name": "mxm_dev",
-        "user": "mxm_dev_app",
-    }
-
-    actual_database = {
-        "driver": str(db_config["driver"]),
-        "host": str(db_config["host"]),
-        "port": int(db_config["port"]),
-        "name": str(db_config["name"]),
-        "user": str(db_config["user"]),
-    }
-
-    if actual_database != expected_database:
-        raise RuntimeError(
-            "PostgreSQL integration tests require the accepted mxm_dev "
-            f"database target. Expected {expected_database!r}, "
-            f"got {actual_database!r}."
-        )
-
-
 def _fetch_rows(
     database: PostgresDatabase,
     query: ExecutableQuery,
     parameters: tuple[object, ...] | None = None,
 ) -> list[PostgresRow]:
-    """Execute a query and return all result rows."""
+    """Execute a query in its own transaction and return all rows."""
 
     with database.transaction() as connection:
         with connection.cursor() as cursor:
@@ -190,28 +59,6 @@ def _fetch_rows(
                 )
 
             return cursor.fetchall()
-
-
-def _drop_schema(
-    database: PostgresDatabase,
-) -> None:
-    """Drop only the validated disposable schema owned by the test."""
-
-    if not database.schema.startswith("refdata_test_"):
-        raise RuntimeError(
-            f"Refusing to drop a non-test PostgreSQL schema: {database.schema!r}."
-        )
-
-    if database.schema == "refdata":
-        raise RuntimeError("Refusing to drop the operational refdata schema.")
-
-    query = sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
-        sql.Identifier(database.schema)
-    )
-
-    with database.transaction() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(query)
 
 
 def test_packaged_migrations_create_versioned_postgres_schema(
