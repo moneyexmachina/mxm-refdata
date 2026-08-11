@@ -6,8 +6,8 @@ from datetime import date
 
 import pytest
 
-from mxm.refdata.factories.period_factory import PeriodFactory
-from mxm.refdata.models.products.futures_product_spec import LastTradingRule
+from mxm.refdata.generation.periods import period_from_id
+from mxm.refdata.models.products.futures_product import LastTradingRule
 from mxm.refdata.models.reference_events import ReferenceEvent
 from mxm.refdata.models.weekdays import Weekday
 from mxm.refdata.trading_calendars.last_trading_day import (
@@ -104,7 +104,7 @@ def test_calculate_last_trading_day(
 ) -> None:
     """Calculate last trading days for supported rule forms."""
 
-    period = PeriodFactory.get_period(
+    period = period_from_id(
         period_id=period_id,
     )
 
@@ -123,7 +123,7 @@ def test_business_day_offset_moves_from_reference_date(
 ) -> None:
     """Apply the business-day offset after resolving the reference date."""
 
-    period = PeriodFactory.get_period(
+    period = period_from_id(
         period_id="Jun-2025",
     )
     rule = LastTradingRule(
@@ -148,7 +148,7 @@ def test_period_offset_is_applied_before_reference_date_resolution(
 ) -> None:
     """Shift the contract period before resolving the reference event."""
 
-    period = PeriodFactory.get_period(
+    period = period_from_id(
         period_id="Jun-2025",
     )
     rule = LastTradingRule(

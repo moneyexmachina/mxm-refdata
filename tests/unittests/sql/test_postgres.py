@@ -516,3 +516,203 @@ def test_check_connection_rolls_back_and_propagates_query_error() -> None:
     assert connection.commit_calls == 0
     assert connection.rollback_calls == 1
     assert connection.close_calls == 1
+
+
+# ---------------------------------------------------------------------
+# CONSTRUCTION FROM RESOLVED CONFIG
+# ---------------------------------------------------------------------
+
+
+def test_from_config_constructs_native_postgresql_url() -> None:
+    """Resolved PostgreSQL fields are assembled into a native connection URL."""
+
+    connection = FakeConnection()
+    connect_factory = FakeConnectFactory(connection)
+
+    database = PostgresDatabase.from_config(
+        host="localhost",
+        port=5432,
+        database="mxm_dev",
+        user="mxm_dev_app",
+        password="secret",
+        connect_factory=cast(
+            ConnectFactory,
+            connect_factory,
+        ),
+    )
+
+    with database.transaction() as yielded_connection:
+        assert yielded_connection is connection
+
+    assert connect_factory.connection_urls == [
+        "postgresql://mxm_dev_app:secret@localhost:5432/mxm_dev"
+    ]
+
+
+def test_from_config_encodes_postgresql_uri_components() -> None:
+    """User, password, and database values are safely encoded for a URI."""
+
+    connect_factory = FakeConnectFactory()
+
+    database = PostgresDatabase.from_config(
+        host="db.example.com",
+        port=5432,
+        database="mxm/dev",
+        user="mxm@example.com",
+        password="a:b/@? #%",
+        connect_factory=cast(
+            ConnectFactory,
+            connect_factory,
+        ),
+    )
+
+    with database.transaction():
+        pass
+
+    assert connect_factory.connection_urls == [
+        (
+            "postgresql://"
+            "mxm%40example.com:"
+            "a%3Ab%2F%40%3F%20%23%25"
+            "@db.example.com:5432/"
+            "mxm%2Fdev"
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("host", "expected_host"),
+    [
+        ("::1", "[::1]"),
+        ("2001:db8::1", "[2001:db8::1]"),
+        ("[::1]", "[::1]"),
+    ],
+)
+def test_from_config_renders_ipv6_host_for_postgresql_uri(
+    host: str,
+    expected_host: str,
+) -> None:
+    """IPv6 addresses are bracketed exactly once in PostgreSQL URIs."""
+
+    connect_factory = FakeConnectFactory()
+
+    database = PostgresDatabase.from_config(
+        host=host,
+        port=5432,
+        database="mxm_dev",
+        user="mxm_dev_app",
+        password="secret",
+        connect_factory=cast(
+            ConnectFactory,
+            connect_factory,
+        ),
+    )
+
+    with database.transaction():
+        pass
+
+    assert connect_factory.connection_urls == [
+        f"postgresql://mxm_dev_app:secret@{expected_host}:5432/mxm_dev"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("host", ""),
+        ("host", "   "),
+        ("database", ""),
+        ("database", "   "),
+        ("user", ""),
+        ("user", "   "),
+        ("password", ""),
+        ("password", "   "),
+    ],
+)
+def test_from_config_rejects_empty_connection_text(
+    field: str,
+    value: str,
+) -> None:
+    """Resolved PostgreSQL connection fields must contain non-empty text."""
+
+    parameters = {
+        "host": "localhost",
+        "database": "mxm_dev",
+        "user": "mxm_dev_app",
+        "password": "secret",
+    }
+    parameters[field] = value
+
+    with pytest.raises(
+        ValueError,
+        match=rf"PostgreSQL {field} must be non-empty",
+    ):
+        PostgresDatabase.from_config(
+            host=parameters["host"],
+            port=5432,
+            database=parameters["database"],
+            user=parameters["user"],
+            password=parameters["password"],
+        )
+
+
+@pytest.mark.parametrize(
+    "port",
+    [
+        0,
+        -1,
+        65_536,
+    ],
+)
+def test_from_config_rejects_out_of_range_port(
+    port: int,
+) -> None:
+    """PostgreSQL TCP port must be inside the valid port range."""
+
+    with pytest.raises(
+        ValueError,
+        match=r"port must be between 1 and 65535",
+    ):
+        PostgresDatabase.from_config(
+            host="localhost",
+            port=port,
+            database="mxm_dev",
+            user="mxm_dev_app",
+            password="secret",
+        )
+
+
+def test_from_config_preserves_owned_schema() -> None:
+    """The factory preserves the explicitly selected PostgreSQL schema."""
+
+    database = PostgresDatabase.from_config(
+        host="localhost",
+        port=5432,
+        database="mxm_dev",
+        user="mxm_dev_app",
+        password="secret",
+        schema="refdata_test_abc123",
+    )
+
+    assert database.schema == "refdata_test_abc123"
+
+
+def test_with_schema_preserves_connection_target_and_factory() -> None:
+    """A derived database boundary changes only its owned schema."""
+
+    connection = FakeConnection()
+    database, connect_factory = _make_database(
+        connection,
+        connection_url=("postgresql://mxm_dev_app:secret@localhost:5432/mxm_dev"),
+    )
+
+    derived = database.with_schema("refdata_test_abc123")
+
+    assert derived.schema == "refdata_test_abc123"
+
+    with derived.transaction() as yielded_connection:
+        assert yielded_connection is connection
+
+    assert connect_factory.connection_urls == [
+        "postgresql://mxm_dev_app:secret@localhost:5432/mxm_dev"
+    ]

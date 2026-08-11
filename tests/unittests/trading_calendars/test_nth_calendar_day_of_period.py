@@ -2,7 +2,7 @@ import datetime
 
 import pytest
 
-from mxm.refdata.factories import PeriodFactory
+from mxm.refdata.generation.periods import period_from_id
 from mxm.refdata.trading_calendars.nth_calendar_day_of_period import (
     get_nth_calendar_day_of_period,
 )
@@ -27,13 +27,13 @@ def test_get_nth_calendar_day_of_period(
     period_id: str, n: int, expected: datetime.date
 ):
     """Test retrieving the N-th calendar day of a period."""
-    period = PeriodFactory.get_period(period_id=period_id)
+    period = period_from_id(period_id=period_id)
     assert get_nth_calendar_day_of_period(period, n) == expected
 
 
 def test_invalid_n():
     """Test that out-of-range N values raise a ValueError."""
-    period = PeriodFactory.get_period(period_id="Jun-2025")
+    period = period_from_id(period_id="Jun-2025")
     with pytest.raises(ValueError):
         get_nth_calendar_day_of_period(period, 40)  # More than 30 days in June
     with pytest.raises(ValueError):

@@ -1,11 +1,11 @@
 """Shared fixtures for PostgreSQL integration tests.
 
-These fixtures resolve the accepted MXM development runtime and provide
-uniquely named disposable PostgreSQL schemas.
+These fixtures resolve the accepted MXM development runtime through the normal
+mxm-refdata composition root and provide uniquely named disposable PostgreSQL
+schemas.
 
 Integration tests may run only against the accepted ``mxm_dev`` database on
-``monolith``. The fixtures never operate against the operational ``refdata``
-schema.
+``monolith``. Tests never operate on the operational ``refdata`` schema.
 """
 
 from __future__ import annotations
@@ -17,8 +17,7 @@ from uuid import uuid4
 import pytest
 from psycopg import sql
 
-from mxm.config import make_view
-from mxm.refdata.composition import resolve_database_url
+from mxm.refdata.composition import build_refdata
 from mxm.refdata.sql.migration_runner import MigrationRunner
 from mxm.refdata.sql.postgres import PostgresDatabase
 from mxm.runtime import (
@@ -53,45 +52,41 @@ def runtime_context() -> RuntimeContext:
 
 
 @pytest.fixture(scope="session")
-def postgres_connection_url(
+def configured_postgres_database(
     runtime_context: RuntimeContext,
-) -> str:
-    """Resolve the PostgreSQL URL through MXM configuration and secrets."""
+) -> PostgresDatabase:
+    """Resolve the accepted PostgreSQL target through normal composition.
 
-    config = make_view(
-        runtime_context.config,
-        "mxm_refdata",
-        readonly=True,
-        resolve=True,
-    )
+    The returned boundary owns the operational ``refdata`` schema but is never
+    itself used for integration-test SQL. Individual tests derive isolated
+    disposable-schema boundaries from it.
+    """
 
-    return resolve_database_url(
-        ctx=runtime_context,
-        config=config,
-    )
+    refdata = build_refdata(runtime_context)
+
+    return refdata.database
 
 
 @pytest.fixture
 def postgres_database(
-    postgres_connection_url: str,
+    configured_postgres_database: PostgresDatabase,
 ) -> Generator[PostgresDatabase]:
     """Provide an unmigrated database boundary for one disposable schema.
 
-    The schema does not need to exist when this fixture is yielded. A migration
-    test can therefore prove creation from an empty starting point.
+    Each test receives a unique schema on the configured development
+    PostgreSQL target. The schema does not need to exist when the fixture is
+    yielded, allowing migration tests to prove creation from an empty starting
+    point.
 
-    The schema is dropped during fixture teardown, including after test
-    failures.
+    The disposable schema is dropped during fixture teardown, including after
+    test failures.
     """
 
     schema = f"refdata_test_{uuid4().hex[:12]}"
 
     _require_safe_test_schema(schema)
 
-    database = PostgresDatabase(
-        postgres_connection_url,
-        schema=schema,
-    )
+    database = configured_postgres_database.with_schema(schema)
 
     try:
         yield database
@@ -106,6 +101,7 @@ def migrated_postgres_database(
     """Provide a disposable PostgreSQL schema with all migrations applied."""
 
     runner = MigrationRunner(postgres_database)
+
     applied_versions = runner.migrate()
 
     if "001" not in applied_versions:

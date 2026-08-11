@@ -1170,6 +1170,483 @@ def test_failed_ledger_insert_stops_migration_processing() -> None:
 
 
 # ---------------------------------------------------------------------
+# MIGRATION INSPECTION
+# ---------------------------------------------------------------------
+
+
+def test_inspect_reports_uninitialised_schema() -> None:
+    """An absent schema is reported as normal uninitialised state."""
+
+    migration_001 = _make_migration(
+        "001_initial.sql",
+        _INITIAL_MIGRATION_SQL,
+    )
+    migration_002 = _make_migration(
+        "002_second.sql",
+        _SECOND_MIGRATION_SQL,
+    )
+    resources = _migration_resources(
+        ("000_bootstrap.sql", _BOOTSTRAP_SQL),
+        (migration_001.filename, migration_001.sql_text),
+        (migration_002.filename, migration_002.sql_text),
+    )
+    connections = [
+        FakeConnection(
+            rows=[
+                (
+                    False,
+                    False,
+                )
+            ]
+        ),
+    ]
+    runner, database = _make_runner(
+        resources,
+        connections,
+    )
+
+    inspection = runner.inspect()
+
+    assert inspection.initialised is False
+    assert inspection.current is False
+    assert inspection.packaged_versions == (
+        "001",
+        "002",
+    )
+    assert inspection.applied_versions == ()
+    assert inspection.pending_versions == (
+        "001",
+        "002",
+    )
+
+    assert database.transaction_calls == 1
+    assert len(database.used_connections) == 1
+
+
+def test_inspect_reports_current_schema() -> None:
+    """A fully migrated schema is reported as current."""
+
+    migration_001 = _make_migration(
+        "001_initial.sql",
+        _INITIAL_MIGRATION_SQL,
+    )
+    migration_002 = _make_migration(
+        "002_second.sql",
+        _SECOND_MIGRATION_SQL,
+    )
+    resources = _migration_resources(
+        ("000_bootstrap.sql", _BOOTSTRAP_SQL),
+        (migration_001.filename, migration_001.sql_text),
+        (migration_002.filename, migration_002.sql_text),
+    )
+    connections = [
+        FakeConnection(
+            rows=[
+                (
+                    True,
+                    True,
+                )
+            ]
+        ),
+        FakeConnection(
+            rows=[
+                (
+                    migration_001.version,
+                    migration_001.checksum,
+                ),
+                (
+                    migration_002.version,
+                    migration_002.checksum,
+                ),
+            ]
+        ),
+    ]
+    runner, database = _make_runner(
+        resources,
+        connections,
+    )
+
+    inspection = runner.inspect()
+
+    assert inspection.initialised is True
+    assert inspection.current is True
+    assert inspection.packaged_versions == (
+        "001",
+        "002",
+    )
+    assert inspection.applied_versions == (
+        "001",
+        "002",
+    )
+    assert inspection.pending_versions == ()
+
+    assert database.transaction_calls == 2
+
+
+def test_inspect_reports_pending_migrations() -> None:
+    """Applied and pending versions are reported in packaged order."""
+
+    migration_001 = _make_migration(
+        "001_initial.sql",
+        _INITIAL_MIGRATION_SQL,
+    )
+    migration_002 = _make_migration(
+        "002_second.sql",
+        _SECOND_MIGRATION_SQL,
+    )
+    migration_003 = _make_migration(
+        "003_third.sql",
+        _THIRD_MIGRATION_SQL,
+    )
+    resources = _migration_resources(
+        (migration_003.filename, migration_003.sql_text),
+        ("000_bootstrap.sql", _BOOTSTRAP_SQL),
+        (migration_001.filename, migration_001.sql_text),
+        (migration_002.filename, migration_002.sql_text),
+    )
+    connections = [
+        FakeConnection(
+            rows=[
+                (
+                    True,
+                    True,
+                )
+            ]
+        ),
+        FakeConnection(
+            rows=[
+                (
+                    migration_001.version,
+                    migration_001.checksum,
+                )
+            ]
+        ),
+    ]
+    runner, database = _make_runner(
+        resources,
+        connections,
+    )
+
+    inspection = runner.inspect()
+
+    assert inspection.initialised is True
+    assert inspection.current is False
+    assert inspection.packaged_versions == (
+        "001",
+        "002",
+        "003",
+    )
+    assert inspection.applied_versions == ("001",)
+    assert inspection.pending_versions == (
+        "002",
+        "003",
+    )
+
+    assert database.transaction_calls == 2
+
+
+def test_inspect_does_not_modify_migration_state() -> None:
+    """Migration inspection performs only read operations."""
+
+    migration_001 = _make_migration(
+        "001_initial.sql",
+        _INITIAL_MIGRATION_SQL,
+    )
+    migration_002 = _make_migration(
+        "002_second.sql",
+        _SECOND_MIGRATION_SQL,
+    )
+    resources = _migration_resources(
+        ("000_bootstrap.sql", _BOOTSTRAP_SQL),
+        (migration_001.filename, migration_001.sql_text),
+        (migration_002.filename, migration_002.sql_text),
+    )
+    connections = [
+        FakeConnection(
+            rows=[
+                (
+                    True,
+                    True,
+                )
+            ]
+        ),
+        FakeConnection(
+            rows=[
+                (
+                    migration_001.version,
+                    migration_001.checksum,
+                )
+            ]
+        ),
+    ]
+    runner, database = _make_runner(
+        resources,
+        connections,
+    )
+
+    runner.inspect()
+
+    assert database.transaction_calls == 2
+
+    bootstrap_inspection_cursor = _cursor_for(
+        database,
+        0,
+    )
+    ledger_cursor = _cursor_for(
+        database,
+        1,
+    )
+
+    assert len(bootstrap_inspection_cursor.executions) == 1
+    assert len(ledger_cursor.executions) == 1
+
+    bootstrap_query = _query_text(bootstrap_inspection_cursor.executions[0].query)
+    ledger_query = _query_text(ledger_cursor.executions[0].query)
+
+    assert "information_schema.schemata" in bootstrap_query
+    assert "information_schema.tables" in bootstrap_query
+    assert bootstrap_inspection_cursor.executions[0].parameters == (
+        "refdata",
+        "refdata",
+    )
+
+    assert "SELECT version, checksum" in ledger_query
+    assert ledger_cursor.executions[0].parameters is None
+
+    all_query_text = "\n".join(
+        _query_text(execution.query)
+        for connection in database.used_connections
+        for execution in connection.fake_cursor.executions
+    )
+
+    assert "CREATE SCHEMA" not in all_query_text
+    assert "CREATE TABLE" not in all_query_text
+    assert "ALTER TABLE" not in all_query_text
+    assert "INSERT INTO" not in all_query_text
+    assert "DROP " not in all_query_text
+
+
+@pytest.mark.parametrize(
+    ("schema_exists", "ledger_exists"),
+    [
+        (
+            True,
+            False,
+        ),
+        (
+            False,
+            True,
+        ),
+    ],
+)
+def test_inspect_rejects_inconsistent_bootstrap_state(
+    schema_exists: bool,
+    ledger_exists: bool,
+) -> None:
+    """Partial bootstrap state is treated as migration corruption."""
+
+    resources = _migration_resources(
+        ("000_bootstrap.sql", _BOOTSTRAP_SQL),
+        ("001_initial.sql", _INITIAL_MIGRATION_SQL),
+    )
+    connections = [
+        FakeConnection(
+            rows=[
+                (
+                    schema_exists,
+                    ledger_exists,
+                )
+            ]
+        ),
+    ]
+    runner, database = _make_runner(
+        resources,
+        connections,
+    )
+
+    with pytest.raises(
+        MigrationStateError,
+        match=r"bootstrap state is inconsistent",
+    ):
+        runner.inspect()
+
+    assert database.transaction_calls == 1
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [],
+        [
+            (
+                True,
+                True,
+            ),
+            (
+                True,
+                True,
+            ),
+        ],
+    ],
+)
+def test_inspect_rejects_unexpected_bootstrap_result_count(
+    rows: list[tuple[object, ...]],
+) -> None:
+    """Bootstrap inspection must return exactly one PostgreSQL row."""
+
+    resources = _migration_resources(
+        ("000_bootstrap.sql", _BOOTSTRAP_SQL),
+        ("001_initial.sql", _INITIAL_MIGRATION_SQL),
+    )
+    connections = [
+        FakeConnection(
+            rows=rows,
+        ),
+    ]
+    runner, _ = _make_runner(
+        resources,
+        connections,
+    )
+
+    with pytest.raises(
+        MigrationStateError,
+        match=r"unexpected number of rows",
+    ):
+        runner.inspect()
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        (True,),
+        (
+            True,
+            True,
+            False,
+        ),
+    ],
+)
+def test_inspect_rejects_unexpected_bootstrap_row_shape(
+    row: tuple[object, ...],
+) -> None:
+    """Bootstrap inspection must return schema and ledger existence only."""
+
+    resources = _migration_resources(
+        ("000_bootstrap.sql", _BOOTSTRAP_SQL),
+        ("001_initial.sql", _INITIAL_MIGRATION_SQL),
+    )
+    connections = [
+        FakeConnection(
+            rows=[
+                row,
+            ]
+        ),
+    ]
+    runner, _ = _make_runner(
+        resources,
+        connections,
+    )
+
+    with pytest.raises(
+        MigrationStateError,
+        match=r"unexpected row shape",
+    ):
+        runner.inspect()
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        (
+            1,
+            True,
+        ),
+        (
+            True,
+            1,
+        ),
+        (
+            "true",
+            True,
+        ),
+        (
+            True,
+            None,
+        ),
+    ],
+)
+def test_inspect_rejects_non_boolean_bootstrap_state(
+    row: tuple[object, ...],
+) -> None:
+    """Bootstrap catalogue observations must be genuine boolean values."""
+
+    resources = _migration_resources(
+        ("000_bootstrap.sql", _BOOTSTRAP_SQL),
+        ("001_initial.sql", _INITIAL_MIGRATION_SQL),
+    )
+    connections = [
+        FakeConnection(
+            rows=[
+                row,
+            ]
+        ),
+    ]
+    runner, _ = _make_runner(
+        resources,
+        connections,
+    )
+
+    with pytest.raises(
+        MigrationStateError,
+        match=r"must be boolean",
+    ):
+        runner.inspect()
+
+
+def test_inspect_validates_applied_migration_checksums() -> None:
+    """Inspection validates ledger identity before reporting migration state."""
+
+    migration = _make_migration(
+        "001_initial.sql",
+        _INITIAL_MIGRATION_SQL,
+    )
+    resources = _migration_resources(
+        ("000_bootstrap.sql", _BOOTSTRAP_SQL),
+        (migration.filename, migration.sql_text),
+    )
+    connections = [
+        FakeConnection(
+            rows=[
+                (
+                    True,
+                    True,
+                )
+            ]
+        ),
+        FakeConnection(
+            rows=[
+                (
+                    migration.version,
+                    "f" * 64,
+                )
+            ]
+        ),
+    ]
+    runner, database = _make_runner(
+        resources,
+        connections,
+    )
+
+    with pytest.raises(
+        MigrationChecksumMismatchError,
+        match=r"Checksum mismatch.*001_initial\.sql",
+    ):
+        runner.inspect()
+
+    assert database.transaction_calls == 2
+
+
+# ---------------------------------------------------------------------
 # IDEMPOTENT REPLAY
 # ---------------------------------------------------------------------
 

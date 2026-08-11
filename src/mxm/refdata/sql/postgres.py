@@ -21,6 +21,7 @@ import re
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any, Final
+from urllib.parse import quote
 
 import psycopg
 from psycopg import Connection
@@ -90,6 +91,21 @@ def _validate_schema_name(schema: str) -> str:
     return schema
 
 
+def _require_connection_text(
+    value: str,
+    *,
+    field: str,
+) -> str:
+    """Validate and return one required PostgreSQL connection value."""
+
+    resolved = value.strip()
+
+    if not resolved:
+        raise ValueError(f"PostgreSQL {field} must be non-empty")
+
+    return resolved
+
+
 def _default_connect(
     connection_url: str,
 ) -> Connection[PostgresRow]:
@@ -141,11 +157,115 @@ class PostgresDatabase:
         self._schema = _validate_schema_name(schema)
         self._connect = connect_factory or _default_connect
 
+    @classmethod
+    def from_config(
+        cls,
+        *,
+        host: str,
+        port: int,
+        database: str,
+        user: str,
+        password: str,
+        schema: str = "refdata",
+        connect_factory: ConnectFactory | None = None,
+    ) -> PostgresDatabase:
+        """Create a PostgreSQL boundary from resolved connection parameters.
+
+        This constructor accepts concrete PostgreSQL connection values after
+        runtime configuration and secrets have been resolved by the
+        composition root. PostgreSQL URI construction remains encapsulated
+        inside this adapter.
+
+        Args:
+            host:
+                PostgreSQL server hostname, IPv4 address, or IPv6 address.
+            port:
+                PostgreSQL TCP port.
+            database:
+                PostgreSQL database name.
+            user:
+                PostgreSQL user name.
+            password:
+                Resolved PostgreSQL password.
+            schema:
+                Explicitly owned PostgreSQL schema.
+            connect_factory:
+                Optional connection constructor used primarily by unit tests.
+
+        Returns:
+            A configured PostgreSQL runtime boundary.
+
+        Raises:
+            ValueError:
+                If any connection parameter or the owned schema is invalid.
+        """
+
+        resolved_host = _require_connection_text(
+            host,
+            field="host",
+        )
+        resolved_database = _require_connection_text(
+            database,
+            field="database",
+        )
+        resolved_user = _require_connection_text(
+            user,
+            field="user",
+        )
+        resolved_password = _require_connection_text(
+            password,
+            field="password",
+        )
+
+        if not 1 <= port <= 65_535:
+            raise ValueError(
+                f"PostgreSQL port must be between 1 and 65535, got {port!r}"
+            )
+
+        rendered_host = (
+            f"[{resolved_host}]"
+            if ":" in resolved_host and not resolved_host.startswith("[")
+            else resolved_host
+        )
+
+        connection_url = (
+            "postgresql://"
+            f"{quote(resolved_user, safe='')}:"
+            f"{quote(resolved_password, safe='')}"
+            f"@{rendered_host}:{port}/"
+            f"{quote(resolved_database, safe='')}"
+        )
+
+        return cls(
+            connection_url,
+            schema=schema,
+            connect_factory=connect_factory,
+        )
+
     @property
     def schema(self) -> str:
         """Return the validated owned PostgreSQL schema name."""
 
         return self._schema
+
+    def with_schema(
+        self,
+        schema: str,
+    ) -> PostgresDatabase:
+        """Return a database boundary for the same target with another schema.
+
+        The connection target and connection factory are preserved. The new
+        schema is validated independently by the normal constructor.
+
+        This is useful when callers require an isolated PostgreSQL namespace,
+        such as disposable integration-test schemas.
+        """
+
+        return PostgresDatabase(
+            self._connection_url,
+            schema=schema,
+            connect_factory=self._connect,
+        )
 
     @contextmanager
     def transaction(

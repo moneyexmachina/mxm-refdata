@@ -54,30 +54,26 @@ CREATE TABLE {schema}.period_cycles (
         CHECK (cycle_size >= 1)
 );
 
-
 CREATE TABLE {schema}.futures_products (
     product_id text PRIMARY KEY,
 
-    schema_version text NOT NULL,
     asset_class text NOT NULL,
-
-    source_relative_path text NOT NULL,
-    source_revision text NOT NULL,
-    specification_digest text NOT NULL,
-    canonical_specification jsonb NOT NULL,
-
     venue text NOT NULL,
     description text NOT NULL,
     currency text NOT NULL,
     unit text NOT NULL,
     contract_size double precision NOT NULL,
+
     valid_period_rule text NOT NULL,
     listing_rule text NOT NULL,
     period_types text NOT NULL,
+
     settlement text NOT NULL,
     last_trading_rule text NOT NULL,
     expiry_rule text NOT NULL,
     trading_calendar text NOT NULL,
+
+    contract_rules jsonb NOT NULL,
 
     trading_hours text,
     tick_size double precision,
@@ -88,23 +84,8 @@ CREATE TABLE {schema}.futures_products (
     CONSTRAINT futures_products_product_id_non_empty
         CHECK (product_id <> ''),
 
-    CONSTRAINT futures_products_schema_version_non_empty
-        CHECK (schema_version <> ''),
-
     CONSTRAINT futures_products_asset_class_non_empty
         CHECK (asset_class <> ''),
-
-    CONSTRAINT futures_products_source_relative_path_non_empty
-        CHECK (source_relative_path <> ''),
-
-    CONSTRAINT futures_products_source_revision_non_empty
-        CHECK (source_revision <> ''),
-
-    CONSTRAINT futures_products_specification_digest_sha256
-        CHECK (specification_digest ~ '^[0-9a-f]{64}$'),
-
-    CONSTRAINT futures_products_canonical_specification_object
-        CHECK (jsonb_typeof(canonical_specification) = 'object'),
 
     CONSTRAINT futures_products_venue_non_empty
         CHECK (venue <> ''),
@@ -139,10 +120,75 @@ CREATE TABLE {schema}.futures_products (
     CONSTRAINT futures_products_trading_calendar_non_empty
         CHECK (trading_calendar <> ''),
 
-    CONSTRAINT futures_products_source_relative_path_unique
-        UNIQUE (source_relative_path)
+    CONSTRAINT futures_products_contract_rules_object
+        CHECK (jsonb_typeof(contract_rules) = 'object')
 );
 
+
+CREATE TABLE {schema}.futures_product_sources (
+    product_id text PRIMARY KEY,
+
+    schema_version text NOT NULL,
+    source_relative_path text NOT NULL,
+    source_digest text NOT NULL,
+    source_revision text NOT NULL,
+
+    created_at date NOT NULL,
+    updated_at date NOT NULL,
+    review_status text NOT NULL,
+    curator text NOT NULL,
+
+    source_type text NOT NULL,
+    source_url text NOT NULL,
+    source_accessed_at date NOT NULL,
+    curation_method text NOT NULL,
+    assistance text NOT NULL,
+    notes jsonb NOT NULL,
+
+    CONSTRAINT futures_product_sources_product_foreign_key
+        FOREIGN KEY (product_id)
+        REFERENCES {schema}.futures_products (product_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT futures_product_sources_schema_version_non_empty
+        CHECK (schema_version <> ''),
+
+    CONSTRAINT futures_product_sources_source_relative_path_non_empty
+        CHECK (source_relative_path <> ''),
+
+    CONSTRAINT futures_product_sources_source_relative_path_unique
+        UNIQUE (source_relative_path),
+
+    CONSTRAINT futures_product_sources_source_digest_sha256
+        CHECK (source_digest ~ '^[0-9a-f]{64}$'),
+
+    CONSTRAINT futures_product_sources_source_revision_git_sha
+        CHECK (source_revision ~ '^[0-9a-f]{40}$'),
+
+    CONSTRAINT futures_product_sources_date_order
+        CHECK (created_at <= updated_at),
+
+    CONSTRAINT futures_product_sources_review_status_non_empty
+        CHECK (review_status <> ''),
+
+    CONSTRAINT futures_product_sources_curator_non_empty
+        CHECK (curator <> ''),
+
+    CONSTRAINT futures_product_sources_source_type_non_empty
+        CHECK (source_type <> ''),
+
+    CONSTRAINT futures_product_sources_source_url_non_empty
+        CHECK (source_url <> ''),
+
+    CONSTRAINT futures_product_sources_curation_method_non_empty
+        CHECK (curation_method <> ''),
+
+    CONSTRAINT futures_product_sources_assistance_non_empty
+        CHECK (assistance <> ''),
+
+    CONSTRAINT futures_product_sources_notes_array
+        CHECK (jsonb_typeof(notes) = 'array')
+);
 
 CREATE TABLE {schema}.period_cycle_memberships (
     cycle_id text NOT NULL,
@@ -212,6 +258,10 @@ CREATE TABLE {schema}.futures_contracts (
 
     CONSTRAINT futures_contracts_trading_calendar_non_empty
         CHECK (trading_calendar <> '')
+    CONSTRAINT futures_contracts_product_period_unique
+        UNIQUE (product_id, period_id),
+    CONSTRAINT futures_contracts_interest_date_order
+        CHECK (first_day_of_interest <= last_trading_day)
 );
 
 

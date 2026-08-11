@@ -14,6 +14,7 @@ from mxm.refdata.sql.periods import (
     PeriodConflictError,
     PeriodPersistenceError,
     fetch_periods,
+    fetch_periods_by_ids,
     fetch_periods_by_types,
     fetch_periods_in_range,
     insert_periods,
@@ -464,6 +465,118 @@ def test_fetch_periods_rejects_invalid_rows(
             _as_connection(connection),
             schema="refdata_test_abc",
         )
+
+
+# ---------------------------------------------------------------------------
+# fetch_periods_by_ids
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_periods_by_ids_returns_early_for_empty_selection() -> None:
+    """An empty period-ID selection performs no database operation."""
+
+    connection = FakeConnection()
+
+    periods = fetch_periods_by_ids(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        period_ids=[],
+    )
+
+    assert periods == {}
+    assert connection.cursor_calls == 0
+    assert connection.executions == []
+
+
+def test_fetch_periods_by_ids_collapses_and_orders_ids() -> None:
+    """Period-ID query parameters are unique and deterministic."""
+
+    connection = FakeConnection(
+        [
+            FakeCursor(rows=[]),
+        ]
+    )
+
+    fetch_periods_by_ids(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        period_ids=[
+            "2024-Q1",
+            "2024-01",
+            "2024",
+            "2024-Q1",
+        ],
+    )
+
+    execution = _single_execution(connection)
+
+    assert execution.operation == "execute"
+    assert execution.parameters == (
+        [
+            "2024",
+            "2024-01",
+            "2024-Q1",
+        ],
+    )
+
+
+def test_fetch_periods_by_ids_uses_expected_filter_and_schema() -> None:
+    """Period-ID selection uses the configured table and text-array filter."""
+
+    connection = FakeConnection(
+        [
+            FakeCursor(rows=[]),
+        ]
+    )
+
+    fetch_periods_by_ids(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        period_ids=[
+            "2024-01",
+        ],
+    )
+
+    execution = _single_execution(connection)
+    query_text = _query_text(execution.query)
+
+    assert '"refdata_test_abc"."periods"' in query_text
+    assert '"public"."periods"' not in query_text
+    assert "period_id = ANY(%s::text[])" in query_text
+    assert "ORDER BY period_id" in query_text
+
+
+def test_fetch_periods_by_ids_reconstructs_matching_rows() -> None:
+    """Rows returned by an ID query reconstruct domain periods."""
+
+    month = _month_period()
+    quarter = _quarter_period()
+
+    connection = FakeConnection(
+        [
+            FakeCursor(
+                rows=[
+                    _period_row(month),
+                    _period_row(quarter),
+                ]
+            ),
+        ]
+    )
+
+    periods = fetch_periods_by_ids(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        period_ids=[
+            quarter.period_id,
+            month.period_id,
+            "missing-period",
+        ],
+    )
+
+    assert periods == {
+        month.period_id: month,
+        quarter.period_id: quarter,
+    }
 
 
 # ---------------------------------------------------------------------------

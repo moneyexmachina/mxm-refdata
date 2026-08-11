@@ -2,7 +2,7 @@ import datetime
 
 import pytest
 
-from mxm.refdata.factories import PeriodFactory
+from mxm.refdata.generation.periods import period_from_id
 from mxm.refdata.trading_calendars.nth_weekday_of_period import (
     get_nth_weekday_of_period,
 )
@@ -67,13 +67,13 @@ def test_get_nth_weekday_of_period(
     period_id: str, weekday: str, n: int, expected: datetime.date
 ):
     """Test retrieving the N-th occurrence of a given weekday in a period."""
-    period = PeriodFactory.get_period(period_id=period_id)
+    period = period_from_id(period_id=period_id)
     assert get_nth_weekday_of_period(period, weekday, n) == expected
 
 
 def test_invalid_n():
     """Test case where N-th weekday does not exist (e.g., 6th Friday in a month)."""
-    period = PeriodFactory.get_period(period_id="Jun-2025")
+    period = period_from_id(period_id="Jun-2025")
     with pytest.raises(ValueError):
         get_nth_weekday_of_period(period, weekday="Thursday", n=6)  # No 6th Thursday
     with pytest.raises(ValueError):

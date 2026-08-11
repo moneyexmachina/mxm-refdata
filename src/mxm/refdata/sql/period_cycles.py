@@ -209,7 +209,7 @@ def insert_period_cycles(
             parameters,
         )
 
-    persisted_cycles = _fetch_period_cycles_by_ids(
+    persisted_cycles = fetch_period_cycles_by_ids(
         connection,
         schema=schema,
         cycle_ids=tuple(cycles_by_id),
@@ -332,7 +332,7 @@ def insert_period_cycle_memberships(
         sorted({membership.cycle_id for membership in memberships_by_identity.values()})
     )
 
-    persisted_memberships = _fetch_period_cycle_memberships_by_cycle_ids(
+    persisted_memberships = fetch_period_cycle_memberships_by_cycle_ids(
         connection,
         schema=schema,
         cycle_ids=affected_cycle_ids,
@@ -393,7 +393,7 @@ def insert_period_cycle_memberships(
             )
 
 
-def _fetch_period_cycles_by_ids(
+def fetch_period_cycles_by_ids(
     connection: Connection[PostgresRow],
     *,
     schema: str,
@@ -434,7 +434,7 @@ def _fetch_period_cycles_by_ids(
     return _period_cycles_from_rows(rows)
 
 
-def _fetch_period_cycle_memberships_by_cycle_ids(
+def fetch_period_cycle_memberships_by_cycle_ids(
     connection: Connection[PostgresRow],
     *,
     schema: str,
@@ -473,6 +473,68 @@ def _fetch_period_cycle_memberships_by_cycle_ids(
         connection,
         query,
         (unique_cycle_ids,),
+    )
+
+    return _period_cycle_memberships_from_rows(rows)
+
+
+def fetch_period_cycle_memberships_for_periods(
+    connection: Connection[PostgresRow],
+    *,
+    schema: str,
+    cycle_id: str,
+    period_ids: Sequence[str],
+) -> dict[MembershipIdentity, PeriodCycleMembership]:
+    """Return memberships for selected periods within one cycle.
+
+    Missing requested period IDs are simply absent from the returned mapping.
+
+    Args:
+        connection:
+            Active Psycopg connection owned by the caller.
+        schema:
+            PostgreSQL schema containing the
+            ``period_cycle_memberships`` table.
+        cycle_id:
+            Period-cycle identifier whose memberships should be returned.
+        period_ids:
+            Period identifiers to include.
+
+    Returns:
+        Matching memberships keyed by ``(cycle_id, period_id)``.
+    """
+
+    unique_period_ids = sorted(set(period_ids))
+
+    if not unique_period_ids:
+        return {}
+
+    query = sql.SQL(
+        """
+        SELECT
+            cycle_id,
+            period_id,
+            cycle_instance,
+            cycle_element
+        FROM {}
+        WHERE cycle_id = %s
+          AND period_id = ANY(%s::text[])
+        ORDER BY period_id
+        """
+    ).format(
+        sql.Identifier(
+            schema,
+            "period_cycle_memberships",
+        )
+    )
+
+    rows = _fetch_rows(
+        connection,
+        query,
+        (
+            cycle_id,
+            unique_period_ids,
+        ),
     )
 
     return _period_cycle_memberships_from_rows(rows)

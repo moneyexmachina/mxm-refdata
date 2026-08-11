@@ -73,6 +73,63 @@ def fetch_periods(
     return _periods_from_rows(rows)
 
 
+def fetch_periods_by_ids(
+    connection: Connection[PostgresRow],
+    *,
+    schema: str,
+    period_ids: Sequence[str],
+) -> dict[str, Period]:
+    """Return requested persisted periods keyed by period ID.
+
+    Missing requested IDs are absent from the returned mapping.
+
+    Duplicate requested IDs are collapsed before querying, and the SQL
+    parameter array is deterministically ordered.
+
+    Args:
+        connection:
+            Active Psycopg connection owned by the caller.
+        schema:
+            PostgreSQL schema containing the ``periods`` table.
+        period_ids:
+            Period identifiers to retrieve.
+
+    Returns:
+        Matching persisted periods keyed by their stable period identifiers.
+    """
+
+    unique_period_ids = sorted(set(period_ids))
+
+    if not unique_period_ids:
+        return {}
+
+    query = sql.SQL(
+        """
+        SELECT
+            period_id,
+            period_type,
+            first_date,
+            last_date
+        FROM {}
+        WHERE period_id = ANY(%s::text[])
+        ORDER BY period_id
+        """
+    ).format(
+        sql.Identifier(
+            schema,
+            "periods",
+        )
+    )
+
+    rows = _fetch_rows(
+        connection,
+        query,
+        (unique_period_ids,),
+    )
+
+    return _periods_from_rows(rows)
+
+
 def fetch_periods_by_types(
     connection: Connection[PostgresRow],
     *,
@@ -280,7 +337,7 @@ def insert_periods(
             parameters,
         )
 
-    persisted_periods = _fetch_periods_by_ids(
+    persisted_periods = fetch_periods_by_ids(
         connection,
         schema=schema,
         period_ids=tuple(periods_by_id),
@@ -303,46 +360,6 @@ def insert_periods(
                 f"persisted={persisted_period!r}, "
                 f"requested={expected_period!r}"
             )
-
-
-def _fetch_periods_by_ids(
-    connection: Connection[PostgresRow],
-    *,
-    schema: str,
-    period_ids: Sequence[str],
-) -> dict[str, Period]:
-    """Return the requested persisted periods keyed by period ID."""
-
-    unique_period_ids = sorted(set(period_ids))
-
-    if not unique_period_ids:
-        return {}
-
-    query = sql.SQL(
-        """
-        SELECT
-            period_id,
-            period_type,
-            first_date,
-            last_date
-        FROM {}
-        WHERE period_id = ANY(%s::text[])
-        ORDER BY period_id
-        """
-    ).format(
-        sql.Identifier(
-            schema,
-            "periods",
-        )
-    )
-
-    rows = _fetch_rows(
-        connection,
-        query,
-        (unique_period_ids,),
-    )
-
-    return _periods_from_rows(rows)
 
 
 def _fetch_rows(

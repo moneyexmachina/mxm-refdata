@@ -131,6 +131,22 @@ class Migration:
         return self.filename == _BOOTSTRAP_FILENAME
 
 
+@dataclass(frozen=True, slots=True)
+class MigrationInspection:
+    """Observed migration state for one PostgreSQL refdata schema."""
+
+    initialised: bool
+    packaged_versions: tuple[str, ...]
+    applied_versions: tuple[str, ...]
+    pending_versions: tuple[str, ...]
+
+    @property
+    def current(self) -> bool:
+        """Return whether the schema has every packaged migration applied."""
+
+        return self.initialised and not self.pending_versions
+
+
 def _load_packaged_migration_resources() -> list[MigrationResource]:
     """Load SQL migration resources from the installed package.
 
@@ -238,6 +254,86 @@ class MigrationRunner:
 
         return migrations
 
+    def inspect(self) -> MigrationInspection:
+        """Inspect migration state without modifying PostgreSQL.
+
+        Packaged migrations are discovered and validated first. The owned
+        PostgreSQL schema is then inspected to determine whether bootstrap has
+        established the migration ledger.
+
+        A completely absent schema is treated as normal uninitialised state.
+        An existing schema without its migration ledger is treated as
+        inconsistent migration state.
+
+        When the migration ledger exists, its contents are decoded and
+        validated against packaged migrations using the same rules as
+        ``migrate()``.
+
+        Returns:
+            Immutable migration-state observations in packaged version order.
+
+        Raises:
+            MigrationDiscoveryError:
+                If packaged migrations are malformed.
+            MigrationChecksumMismatchError:
+                If an applied migration's packaged source has changed.
+            MigrationStateError:
+                If bootstrap state or the migration ledger is inconsistent.
+            psycopg.Error:
+                If PostgreSQL inspection fails.
+        """
+
+        migrations = self.discover()
+        tracked_migrations = migrations[1:]
+
+        packaged_versions = tuple(migration.version for migration in tracked_migrations)
+
+        (
+            schema_exists,
+            ledger_exists,
+        ) = self._inspect_bootstrap_state()
+
+        if not schema_exists and not ledger_exists:
+            return MigrationInspection(
+                initialised=False,
+                packaged_versions=packaged_versions,
+                applied_versions=(),
+                pending_versions=packaged_versions,
+            )
+
+        if not schema_exists or not ledger_exists:
+            raise MigrationStateError(
+                "PostgreSQL migration bootstrap state is inconsistent: "
+                f"schema_exists={schema_exists!r}, "
+                f"ledger_exists={ledger_exists!r}"
+            )
+
+        applied_migrations = self._read_applied_migrations()
+
+        self._validate_applied_migrations(
+            tracked_migrations,
+            applied_migrations,
+        )
+
+        applied_versions = tuple(
+            migration.version
+            for migration in tracked_migrations
+            if migration.version in applied_migrations
+        )
+
+        pending_versions = tuple(
+            migration.version
+            for migration in tracked_migrations
+            if migration.version not in applied_migrations
+        )
+
+        return MigrationInspection(
+            initialised=True,
+            packaged_versions=packaged_versions,
+            applied_versions=applied_versions,
+            pending_versions=pending_versions,
+        )
+
     def migrate(self) -> list[str]:
         """Apply all pending migrations and return newly applied versions.
 
@@ -336,6 +432,73 @@ class MigrationRunner:
                 raise MigrationDiscoveryError(
                     "Migration version '000' is reserved for bootstrap"
                 )
+
+    def _inspect_bootstrap_state(
+        self,
+    ) -> tuple[bool, bool]:
+        """Return whether the owned schema and migration ledger exist."""
+
+        query = sql.SQL(
+            """
+            SELECT
+                EXISTS (
+                    SELECT 1
+                    FROM information_schema.schemata
+                    WHERE schema_name = %s
+                ),
+                EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = %s
+                      AND table_name = 'schema_migrations'
+                )
+            """
+        )
+
+        with self._database.transaction() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    query,
+                    (
+                        self._database.schema,
+                        self._database.schema,
+                    ),
+                )
+                rows = cursor.fetchall()
+
+        if len(rows) != 1:
+            raise MigrationStateError(
+                "Migration bootstrap inspection returned an unexpected "
+                f"number of rows: {rows!r}"
+            )
+
+        row = rows[0]
+
+        if len(row) != 2:
+            raise MigrationStateError(
+                "Migration bootstrap inspection returned an unexpected "
+                f"row shape: {row!r}"
+            )
+
+        schema_exists = row[0]
+        ledger_exists = row[1]
+
+        if not isinstance(schema_exists, bool):
+            raise MigrationStateError(
+                "Migration bootstrap schema-existence result must be boolean, "
+                f"got {schema_exists!r}"
+            )
+
+        if not isinstance(ledger_exists, bool):
+            raise MigrationStateError(
+                "Migration bootstrap ledger-existence result must be boolean, "
+                f"got {ledger_exists!r}"
+            )
+
+        return (
+            schema_exists,
+            ledger_exists,
+        )
 
     def _apply_bootstrap(
         self,

@@ -5,9 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from mxm.config import make_view
 from mxm.refdata.composition import build_refdata
 from mxm.runtime import RuntimeContext
+
+__all__ = [
+    "PreflightCheck",
+    "PreflightReport",
+    "run_preflight",
+]
 
 
 @dataclass(frozen=True)
@@ -28,91 +33,79 @@ class PreflightReport:
     @property
     def passed(self) -> bool:
         """Return whether every preflight check passed."""
+
         return all(check.passed for check in self.checks)
 
 
-def run_preflight(ctx: RuntimeContext) -> PreflightReport:
-    """Check whether mxm-refdata can operate without changing state."""
+def run_preflight(
+    ctx: RuntimeContext,
+) -> PreflightReport:
+    """Check whether the runtime environment can operate mxm-refdata.
+
+    Preflight is strictly read-only. It verifies that the application can be
+    composed, that the configured futures-product source root is available,
+    and that the configured PostgreSQL database is reachable.
+
+    It does not inspect whether reference data has already been materialised.
+    Persisted-state readiness is owned by ``RefData.diagnostics()``.
+    """
+
     checks: list[PreflightCheck] = []
 
-    config = make_view(
-        ctx.config,
-        "mxm_refdata",
-        readonly=True,
-        resolve=True,
-    )
-    checks.append(PreflightCheck("runtime context resolved", True))
-
-    source_root = Path(config["REFDATA_FUTURES_PRODUCTS_JSON_ROOT"]).expanduser()
-
-    checks.append(
-        PreflightCheck(
-            "product source root available",
-            source_root.is_dir(),
-            str(source_root),
-        )
-    )
-    paths = ctx.paths
-    if paths is None:
-        checks.append(
-            PreflightCheck(
-                "runtime filesystem paths resolved",
-                False,
-                "RuntimeContext.paths is not available",
-            )
-        )
-        return PreflightReport(tuple(checks))
-    for name, path_value in (
-        ("data root available", paths.data_root),
-        ("artifact root available", paths.artifact_root),
-        ("export root available", paths.export_root),
-        ("log root available", paths.log_root),
-    ):
-        path = Path(path_value).expanduser()
-        checks.append(
-            PreflightCheck(
-                name,
-                path.is_dir(),
-                str(path),
-            )
-        )
-
     try:
-        refdata = build_refdata(ctx)
+        refdata = build_refdata(
+            ctx,
+        )
     except Exception as err:
         checks.append(
             PreflightCheck(
-                "application composed",
-                False,
-                f"{type(err).__name__}: {err}",
+                name="application composed",
+                passed=False,
+                message=f"{type(err).__name__}: {err}",
             )
         )
-        return PreflightReport(tuple(checks))
 
-    checks.append(PreflightCheck("application composed", True))
-
-    engine = refdata.session_manager.get_engine()
-    db_url = engine.url
-    masked_db_url = db_url.render_as_string(hide_password=True)
-
-    is_postgresql = db_url.get_backend_name() == "postgresql"
+        return PreflightReport(
+            checks=tuple(checks),
+        )
 
     checks.append(
         PreflightCheck(
-            "PostgreSQL selected",
-            is_postgresql,
-            masked_db_url,
+            name="application composed",
+            passed=True,
         )
     )
 
-    database_reachable = refdata.session_manager.check_db_connection()
+    source_root = Path(
+        str(refdata.config["REFDATA_FUTURES_PRODUCTS_JSON_ROOT"])
+    ).expanduser()
 
     checks.append(
         PreflightCheck(
-            "database reachable",
-            database_reachable,
-            masked_db_url,
+            name="product source root available",
+            passed=source_root.is_dir(),
+            message=str(source_root),
         )
     )
 
-    return PreflightReport(tuple(checks))
+    try:
+        database_reachable = refdata.database.check_connection()
+    except Exception as err:
+        checks.append(
+            PreflightCheck(
+                name="database reachable",
+                passed=False,
+                message=f"{type(err).__name__}: {err}",
+            )
+        )
+    else:
+        checks.append(
+            PreflightCheck(
+                name="database reachable",
+                passed=database_reachable,
+            )
+        )
+
+    return PreflightReport(
+        checks=tuple(checks),
+    )

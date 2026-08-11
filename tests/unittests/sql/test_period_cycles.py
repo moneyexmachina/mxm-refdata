@@ -18,7 +18,10 @@ from mxm.refdata.sql.period_cycles import (
     PeriodCycleConflictError,
     PeriodCyclePersistenceError,
     fetch_period_cycle_memberships,
+    fetch_period_cycle_memberships_by_cycle_ids,
+    fetch_period_cycle_memberships_for_periods,
     fetch_period_cycles,
+    fetch_period_cycles_by_ids,
     insert_period_cycle_memberships,
     insert_period_cycles,
 )
@@ -526,6 +529,116 @@ def test_fetch_period_cycles_rejects_invalid_rows(
             _as_connection(connection),
             schema="refdata_test_abc",
         )
+
+
+# ---------------------------------------------------------------------------
+# fetch_period_cycles_by_ids
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_period_cycles_by_ids_returns_early_for_empty_selection() -> None:
+    """An empty cycle-ID selection performs no database operation."""
+
+    connection = FakeConnection()
+
+    cycles = fetch_period_cycles_by_ids(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        cycle_ids=[],
+    )
+
+    assert cycles == {}
+    assert connection.cursor_calls == 0
+    assert connection.executions == []
+
+
+def test_fetch_period_cycles_by_ids_collapses_and_orders_ids() -> None:
+    """Cycle-ID query parameters are unique and deterministic."""
+
+    connection = FakeConnection(
+        [
+            FakeCursor(rows=[]),
+        ]
+    )
+
+    fetch_period_cycles_by_ids(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        cycle_ids=[
+            "CALENDAR_QUARTERS",
+            "CALENDAR_MONTHS",
+            "CALENDAR_QUARTERS",
+        ],
+    )
+
+    execution = _single_execution(connection)
+
+    assert execution.operation == "execute"
+    assert execution.parameters == (
+        [
+            "CALENDAR_MONTHS",
+            "CALENDAR_QUARTERS",
+        ],
+    )
+
+
+def test_fetch_period_cycles_by_ids_uses_expected_filter_and_schema() -> None:
+    """Cycle-ID selection uses the configured table and text-array filter."""
+
+    connection = FakeConnection(
+        [
+            FakeCursor(rows=[]),
+        ]
+    )
+
+    fetch_period_cycles_by_ids(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        cycle_ids=[
+            "CALENDAR_MONTHS",
+        ],
+    )
+
+    execution = _single_execution(connection)
+    query_text = _query_text(execution.query)
+
+    assert '"refdata_test_abc"."period_cycles"' in query_text
+    assert '"public"."period_cycles"' not in query_text
+    assert "cycle_id = ANY(%s::text[])" in query_text
+    assert "ORDER BY cycle_id" in query_text
+
+
+def test_fetch_period_cycles_by_ids_reconstructs_matching_rows() -> None:
+    """Matching cycle rows reconstruct domain values."""
+
+    months = _calendar_months_cycle()
+    quarters = _calendar_quarters_cycle()
+
+    connection = FakeConnection(
+        [
+            FakeCursor(
+                rows=[
+                    _cycle_row(months),
+                    _cycle_row(quarters),
+                ]
+            ),
+        ]
+    )
+
+    cycles = fetch_period_cycles_by_ids(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        cycle_ids=[
+            quarters.cycle_id,
+            "MISSING_CYCLE",
+            months.cycle_id,
+        ],
+    )
+
+    assert cycles == {
+        months.cycle_id: months,
+        quarters.cycle_id: quarters,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1106,6 +1219,277 @@ def test_fetch_memberships_rejects_invalid_rows(
             _as_connection(connection),
             schema="refdata_test_abc",
         )
+
+
+# ---------------------------------------------------------------------------
+# fetch_period_cycle_memberships_by_cycle_ids
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_memberships_by_cycle_ids_returns_early_for_empty_selection() -> None:
+    """An empty cycle-ID selection performs no database operation."""
+
+    connection = FakeConnection()
+
+    memberships = fetch_period_cycle_memberships_by_cycle_ids(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        cycle_ids=[],
+    )
+
+    assert memberships == {}
+    assert connection.cursor_calls == 0
+    assert connection.executions == []
+
+
+def test_fetch_memberships_by_cycle_ids_collapses_and_orders_ids() -> None:
+    """Membership cycle-ID parameters are unique and deterministic."""
+
+    connection = FakeConnection(
+        [
+            FakeCursor(rows=[]),
+        ]
+    )
+
+    fetch_period_cycle_memberships_by_cycle_ids(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        cycle_ids=[
+            "CALENDAR_QUARTERS",
+            "CALENDAR_MONTHS",
+            "CALENDAR_QUARTERS",
+        ],
+    )
+
+    execution = _single_execution(connection)
+
+    assert execution.operation == "execute"
+    assert execution.parameters == (
+        [
+            "CALENDAR_MONTHS",
+            "CALENDAR_QUARTERS",
+        ],
+    )
+
+
+def test_fetch_memberships_by_cycle_ids_uses_expected_filter_and_schema() -> None:
+    """Membership selection filters cycle IDs in the configured schema."""
+
+    connection = FakeConnection(
+        [
+            FakeCursor(rows=[]),
+        ]
+    )
+
+    fetch_period_cycle_memberships_by_cycle_ids(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        cycle_ids=[
+            "CALENDAR_MONTHS",
+        ],
+    )
+
+    execution = _single_execution(connection)
+    query_text = _query_text(execution.query)
+
+    assert '"refdata_test_abc"."period_cycle_memberships"' in query_text
+    assert '"public"."period_cycle_memberships"' not in query_text
+    assert "cycle_id = ANY(%s::text[])" in query_text
+    assert "ORDER BY cycle_id, cycle_instance, cycle_element, period_id" in query_text
+
+
+def test_fetch_memberships_by_cycle_ids_reconstructs_matching_rows() -> None:
+    """Matching membership rows reconstruct domain values."""
+
+    january = _membership(
+        cycle_id="CALENDAR_MONTHS",
+        period_id="2024-01",
+        cycle_instance=2024,
+        cycle_element=1,
+    )
+    february = _membership(
+        cycle_id="CALENDAR_MONTHS",
+        period_id="2024-02",
+        cycle_instance=2024,
+        cycle_element=2,
+    )
+    quarter = _membership(
+        cycle_id="CALENDAR_QUARTERS",
+        period_id="2024-Q1",
+        cycle_instance=2024,
+        cycle_element=1,
+    )
+
+    connection = FakeConnection(
+        [
+            FakeCursor(
+                rows=[
+                    _membership_row(january),
+                    _membership_row(february),
+                    _membership_row(quarter),
+                ]
+            ),
+        ]
+    )
+
+    memberships = fetch_period_cycle_memberships_by_cycle_ids(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        cycle_ids=[
+            "CALENDAR_QUARTERS",
+            "MISSING_CYCLE",
+            "CALENDAR_MONTHS",
+        ],
+    )
+
+    assert memberships == {
+        (
+            january.cycle_id,
+            january.period_id,
+        ): january,
+        (
+            february.cycle_id,
+            february.period_id,
+        ): february,
+        (
+            quarter.cycle_id,
+            quarter.period_id,
+        ): quarter,
+    }
+
+
+# ---------------------------------------------------------------------------
+# fetch_period_cycle_memberships_for_periods
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_memberships_for_periods_returns_early_for_empty_selection() -> None:
+    """An empty period-ID selection performs no database operation."""
+
+    connection = FakeConnection()
+
+    memberships = fetch_period_cycle_memberships_for_periods(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        cycle_id="CALENDAR_MONTHS",
+        period_ids=[],
+    )
+
+    assert memberships == {}
+    assert connection.cursor_calls == 0
+    assert connection.executions == []
+
+
+def test_fetch_memberships_for_periods_collapses_and_orders_period_ids() -> None:
+    """Requested period IDs are unique and deterministic in SQL parameters."""
+
+    connection = FakeConnection(
+        [
+            FakeCursor(rows=[]),
+        ]
+    )
+
+    fetch_period_cycle_memberships_for_periods(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        cycle_id="CALENDAR_MONTHS",
+        period_ids=[
+            "2024-03",
+            "2024-01",
+            "2024-02",
+            "2024-01",
+        ],
+    )
+
+    execution = _single_execution(connection)
+
+    assert execution.operation == "execute"
+    assert execution.parameters == (
+        "CALENDAR_MONTHS",
+        [
+            "2024-01",
+            "2024-02",
+            "2024-03",
+        ],
+    )
+
+
+def test_fetch_memberships_for_periods_uses_expected_filters_and_schema() -> None:
+    """Cycle and period filtering are both performed in PostgreSQL."""
+
+    connection = FakeConnection(
+        [
+            FakeCursor(rows=[]),
+        ]
+    )
+
+    fetch_period_cycle_memberships_for_periods(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        cycle_id="CALENDAR_MONTHS",
+        period_ids=[
+            "2024-01",
+        ],
+    )
+
+    execution = _single_execution(connection)
+    query_text = _query_text(execution.query)
+
+    assert '"refdata_test_abc"."period_cycle_memberships"' in query_text
+    assert '"public"."period_cycle_memberships"' not in query_text
+    assert "cycle_id = %s" in query_text
+    assert "period_id = ANY(%s::text[])" in query_text
+    assert "ORDER BY period_id" in query_text
+
+
+def test_fetch_memberships_for_periods_reconstructs_matching_rows() -> None:
+    """Matching filtered rows reconstruct cycle-membership domain values."""
+
+    january = _membership(
+        cycle_id="CALENDAR_MONTHS",
+        period_id="2024-01",
+        cycle_instance=2024,
+        cycle_element=1,
+    )
+    march = _membership(
+        cycle_id="CALENDAR_MONTHS",
+        period_id="2024-03",
+        cycle_instance=2024,
+        cycle_element=3,
+    )
+
+    connection = FakeConnection(
+        [
+            FakeCursor(
+                rows=[
+                    _membership_row(january),
+                    _membership_row(march),
+                ]
+            ),
+        ]
+    )
+
+    memberships = fetch_period_cycle_memberships_for_periods(
+        _as_connection(connection),
+        schema="refdata_test_abc",
+        cycle_id="CALENDAR_MONTHS",
+        period_ids=[
+            march.period_id,
+            "MISSING_PERIOD",
+            january.period_id,
+        ],
+    )
+
+    assert memberships == {
+        (
+            january.cycle_id,
+            january.period_id,
+        ): january,
+        (
+            march.cycle_id,
+            march.period_id,
+        ): march,
+    }
 
 
 # ---------------------------------------------------------------------------

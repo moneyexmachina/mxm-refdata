@@ -1,364 +1,283 @@
-"""Tests for mxm-refdata operational preflight checks."""
+"""Unit tests for MXM reference-data operational preflight."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import cast
-from unittest.mock import Mock
 
-import pytest
 from pytest_mock import MockerFixture
-from sqlalchemy.engine import make_url
 
-from mxm.config import MXMConfig, make_subconfig
+from mxm.config import MXMConfig
 from mxm.refdata.preflight import (
     PreflightCheck,
     PreflightReport,
     run_preflight,
 )
-from mxm.runtime import RuntimeContext, RuntimePaths
-from mxm.secrets import SecretsApi
-from mxm.types import RuntimeIdentity
+from mxm.refdata.reader import RefDataReader
+from mxm.refdata.runtime import RefData
+from mxm.refdata.sql.postgres import PostgresDatabase
+from mxm.runtime import RuntimeContext
 
 
-def _make_runtime_context(
+class FakeDatabase:
+    """Minimal database capability used by preflight unit tests."""
+
+    def __init__(
+        self,
+        *,
+        reachable: bool = True,
+        error: Exception | None = None,
+    ) -> None:
+        self.reachable = reachable
+        self.error = error
+        self.check_connection_calls = 0
+
+    def check_connection(self) -> bool:
+        """Return or fail the configured connectivity observation."""
+
+        self.check_connection_calls += 1
+
+        if self.error is not None:
+            raise self.error
+
+        return self.reachable
+
+
+def _make_refdata(
     *,
-    mocker: MockerFixture,
-    paths: RuntimePaths | None,
-) -> RuntimeContext:
-    """Construct an explicit RuntimeContext for preflight tests."""
-    return RuntimeContext(
-        identity=RuntimeIdentity(
-            app="mxm-refdata",
-            environment="dev",
-            machine="monolith",
-            substrate="local-process",
-            role="default",
+    source_root: Path,
+    database: FakeDatabase,
+) -> RefData:
+    """Construct the minimal real RefData façade needed by preflight."""
+
+    config = cast(
+        MXMConfig,
+        {
+            "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": str(source_root),
+        },
+    )
+
+    return RefData(
+        config=config,
+        database=cast(
+            PostgresDatabase,
+            database,
         ),
-        config=make_subconfig({}),
-        secrets=cast(SecretsApi, mocker.Mock(spec=SecretsApi)),
-        db_configs=cast(MXMConfig, {}),
-        paths=paths,
+        reader=cast(
+            RefDataReader,
+            object(),
+        ),
     )
 
 
-@pytest.fixture
-def runtime_paths(tmp_path: Path) -> RuntimePaths:
-    """Provide existing runtime filesystem roots."""
-    data_root = tmp_path / "data"
-    artifact_root = tmp_path / "artifacts"
-    export_root = tmp_path / "exports"
-    log_root = tmp_path / "logs"
-
-    for path in (
-        data_root,
-        artifact_root,
-        export_root,
-        log_root,
-    ):
-        path.mkdir()
-
-    return RuntimePaths(
-        data_root=data_root,
-        artifact_root=artifact_root,
-        export_root=export_root,
-        log_root=log_root,
-    )
-
-
-@pytest.fixture
-def runtime_context(
+def test_preflight_passes_when_operational_prerequisites_are_available(
+    tmp_path: Path,
     mocker: MockerFixture,
-    runtime_paths: RuntimePaths,
-) -> RuntimeContext:
-    """Provide a RuntimeContext with valid filesystem roots."""
-    return _make_runtime_context(
-        mocker=mocker,
-        paths=runtime_paths,
+) -> None:
+    """A composed application with source data and PostgreSQL passes preflight."""
+
+    source_root = tmp_path / "products"
+    source_root.mkdir()
+
+    database = FakeDatabase(
+        reachable=True,
+    )
+    refdata = _make_refdata(
+        source_root=source_root,
+        database=database,
+    )
+
+    ctx = mocker.Mock(
+        spec=RuntimeContext,
+    )
+    build_refdata = mocker.patch(
+        "mxm.refdata.preflight.build_refdata",
+        return_value=refdata,
+    )
+
+    report = run_preflight(
+        ctx,
+    )
+
+    assert report == PreflightReport(
+        checks=(
+            PreflightCheck(
+                name="application composed",
+                passed=True,
+            ),
+            PreflightCheck(
+                name="product source root available",
+                passed=True,
+                message=str(source_root),
+            ),
+            PreflightCheck(
+                name="database reachable",
+                passed=True,
+            ),
+        )
+    )
+
+    assert report.passed is True
+    assert database.check_connection_calls == 1
+    build_refdata.assert_called_once_with(
+        ctx,
     )
 
 
-def _get_check(
-    report: PreflightReport,
-    name: str,
-) -> PreflightCheck:
-    """Retrieve one named check from a preflight report."""
-    matches = [check for check in report.checks if check.name == name]
-
-    assert len(matches) == 1
-    return matches[0]
-
-
-def _patch_refdata(
+def test_preflight_stops_when_application_cannot_be_composed(
     mocker: MockerFixture,
-    *,
-    db_url: str,
-    database_reachable: bool = True,
-) -> Mock:
-    """Patch application composition with a controllable database."""
-    engine = Mock()
-    engine.url = make_url(db_url)
+) -> None:
+    """Composition failure prevents checks that require a RefData instance."""
 
-    session_manager = Mock()
-    session_manager.get_engine.return_value = engine
-    session_manager.check_db_connection.return_value = database_reachable
+    ctx = mocker.Mock(
+        spec=RuntimeContext,
+    )
 
-    refdata = Mock()
-    refdata.session_manager = session_manager
+    mocker.patch(
+        "mxm.refdata.preflight.build_refdata",
+        side_effect=RuntimeError("database configuration missing"),
+    )
+
+    report = run_preflight(
+        ctx,
+    )
+
+    assert report == PreflightReport(
+        checks=(
+            PreflightCheck(
+                name="application composed",
+                passed=False,
+                message=("RuntimeError: database configuration missing"),
+            ),
+        )
+    )
+
+    assert report.passed is False
+
+
+def test_preflight_reports_missing_source_root_and_continues(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    """Missing source data does not prevent independent database inspection."""
+
+    source_root = tmp_path / "missing-products"
+
+    database = FakeDatabase(
+        reachable=True,
+    )
+    refdata = _make_refdata(
+        source_root=source_root,
+        database=database,
+    )
 
     mocker.patch(
         "mxm.refdata.preflight.build_refdata",
         return_value=refdata,
     )
 
-    return refdata
-
-
-def test_report_passes_only_when_every_check_passes() -> None:
-    """A preflight report should pass only when all checks pass."""
-    passing = PreflightReport(
-        checks=(
-            PreflightCheck("first", True),
-            PreflightCheck("second", True),
-        )
-    )
-    failing = PreflightReport(
-        checks=(
-            PreflightCheck("first", True),
-            PreflightCheck("second", False, "failed"),
-        )
+    ctx = mocker.Mock(
+        spec=RuntimeContext,
     )
 
-    assert passing.passed
-    assert not failing.passed
+    report = run_preflight(
+        ctx,
+    )
 
-
-def test_preflight_expands_product_source_tilde(
-    runtime_context: RuntimeContext,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    mocker: MockerFixture,
-) -> None:
-    """The configured product source should support user-relative paths."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-
-    source_root = tmp_path / "mxm-refdata-source" / "products" / "futures"
-    source_root.mkdir(parents=True)
-
-    mocker.patch(
-        "mxm.refdata.preflight.make_view",
-        return_value=cast(
-            MXMConfig,
-            {
-                "SQL_DB_URL": ("postgresql://mxm_dev_app@example.invalid/mxm_dev"),
-                "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": (
-                    "~/mxm-refdata-source/products/futures"
-                ),
-            },
+    assert report.checks == (
+        PreflightCheck(
+            name="application composed",
+            passed=True,
         ),
-    )
-    _patch_refdata(
-        mocker,
-        db_url=(
-            "postgresql+psycopg://mxm_dev_app:secret"
-            "@postgres.example.invalid:5432/mxm_dev"
+        PreflightCheck(
+            name="product source root available",
+            passed=False,
+            message=str(source_root),
         ),
-        database_reachable=True,
-    )
-
-    report = run_preflight(runtime_context)
-
-    check = _get_check(report, "product source root available")
-
-    assert check.passed
-    assert check.message == str(source_root)
-
-
-def test_preflight_reports_missing_runtime_paths(
-    mocker: MockerFixture,
-    tmp_path: Path,
-) -> None:
-    """Missing RuntimeContext paths should be an explicit preflight failure."""
-    source_root = tmp_path / "products" / "futures"
-    source_root.mkdir(parents=True)
-
-    runtime_context = _make_runtime_context(
-        mocker=mocker,
-        paths=None,
-    )
-
-    mocker.patch(
-        "mxm.refdata.preflight.make_view",
-        return_value=cast(
-            MXMConfig,
-            {
-                "SQL_DB_URL": ("postgresql://mxm_dev_app@example.invalid/mxm_dev"),
-                "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": str(source_root),
-            },
+        PreflightCheck(
+            name="database reachable",
+            passed=True,
         ),
     )
 
-    report = run_preflight(runtime_context)
-
-    check = _get_check(report, "runtime filesystem paths resolved")
-
-    assert not report.passed
-    assert not check.passed
-    assert check.message == "RuntimeContext.paths is not available"
+    assert report.passed is False
+    assert database.check_connection_calls == 1
 
 
-def test_preflight_reports_application_composition_failure(
-    runtime_context: RuntimeContext,
+def test_preflight_reports_unsuccessful_database_check(
     tmp_path: Path,
     mocker: MockerFixture,
 ) -> None:
-    """Composition errors should become inspectable failed checks."""
-    source_root = tmp_path / "products" / "futures"
-    source_root.mkdir(parents=True)
+    """A negative connectivity observation fails database preflight."""
 
-    mocker.patch(
-        "mxm.refdata.preflight.make_view",
-        return_value=cast(
-            MXMConfig,
-            {
-                "SQL_DB_URL": ("postgresql://mxm_dev_app@example.invalid/mxm_dev"),
-                "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": str(source_root),
-            },
-        ),
+    source_root = tmp_path / "products"
+    source_root.mkdir()
+
+    database = FakeDatabase(
+        reachable=False,
     )
+    refdata = _make_refdata(
+        source_root=source_root,
+        database=database,
+    )
+
     mocker.patch(
         "mxm.refdata.preflight.build_refdata",
-        side_effect=ValueError("invalid product specification"),
+        return_value=refdata,
     )
 
-    report = run_preflight(runtime_context)
+    ctx = mocker.Mock(
+        spec=RuntimeContext,
+    )
 
-    check = _get_check(report, "application composed")
+    report = run_preflight(
+        ctx,
+    )
 
-    assert not report.passed
-    assert not check.passed
-    assert check.message == "ValueError: invalid product specification"
-    assert not any(item.name == "database reachable" for item in report.checks)
+    assert report.checks[-1] == PreflightCheck(
+        name="database reachable",
+        passed=False,
+    )
+
+    assert report.passed is False
+    assert database.check_connection_calls == 1
 
 
-def test_preflight_rejects_sqlite_as_operational_backend(
-    runtime_context: RuntimeContext,
+def test_preflight_reports_database_connection_error(
     tmp_path: Path,
     mocker: MockerFixture,
 ) -> None:
-    """A reachable SQLite database should still fail PostgreSQL selection."""
-    source_root = tmp_path / "products" / "futures"
-    source_root.mkdir(parents=True)
+    """Database exceptions become operational preflight failures."""
 
-    sqlite_path = tmp_path / "refdata-dev.db"
+    source_root = tmp_path / "products"
+    source_root.mkdir()
+
+    database = FakeDatabase(
+        error=ConnectionError("database unavailable"),
+    )
+    refdata = _make_refdata(
+        source_root=source_root,
+        database=database,
+    )
 
     mocker.patch(
-        "mxm.refdata.preflight.make_view",
-        return_value=cast(
-            MXMConfig,
-            {
-                "SQL_DB_URL": f"sqlite:///{sqlite_path}",
-                "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": str(source_root),
-            },
-        ),
-    )
-    _patch_refdata(
-        mocker,
-        db_url=f"sqlite:///{sqlite_path}",
-        database_reachable=True,
+        "mxm.refdata.preflight.build_refdata",
+        return_value=refdata,
     )
 
-    report = run_preflight(runtime_context)
-
-    backend_check = _get_check(report, "PostgreSQL selected")
-    connectivity_check = _get_check(report, "database reachable")
-
-    assert not report.passed
-    assert not backend_check.passed
-    assert backend_check.message.startswith("sqlite:///")
-    assert connectivity_check.passed
-
-
-def test_preflight_accepts_postgresql_backend(
-    runtime_context: RuntimeContext,
-    tmp_path: Path,
-    mocker: MockerFixture,
-) -> None:
-    """A reachable PostgreSQL target should pass database preflight checks."""
-    source_root = tmp_path / "products" / "futures"
-    source_root.mkdir(parents=True)
-
-    mocker.patch(
-        "mxm.refdata.preflight.make_view",
-        return_value=cast(
-            MXMConfig,
-            {
-                "SQL_DB_URL": (
-                    "postgresql://mxm_dev_app:secret"
-                    "@postgres.example.invalid:5432/mxm_dev"
-                ),
-                "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": str(source_root),
-            },
-        ),
-    )
-    _patch_refdata(
-        mocker,
-        db_url=(
-            "postgresql+psycopg://mxm_dev_app:secret"
-            "@postgres.example.invalid:5432/mxm_dev"
-        ),
-        database_reachable=True,
+    ctx = mocker.Mock(
+        spec=RuntimeContext,
     )
 
-    report = run_preflight(runtime_context)
-
-    backend_check = _get_check(report, "PostgreSQL selected")
-    connectivity_check = _get_check(report, "database reachable")
-
-    assert report.passed
-    assert backend_check.passed
-    assert connectivity_check.passed
-    assert "secret" not in backend_check.message
-    assert "***" in backend_check.message
-
-
-def test_preflight_reports_database_connectivity_failure(
-    runtime_context: RuntimeContext,
-    tmp_path: Path,
-    mocker: MockerFixture,
-) -> None:
-    """An unreachable PostgreSQL target should fail preflight cleanly."""
-    source_root = tmp_path / "products" / "futures"
-    source_root.mkdir(parents=True)
-
-    mocker.patch(
-        "mxm.refdata.preflight.make_view",
-        return_value=cast(
-            MXMConfig,
-            {
-                "SQL_DB_URL": (
-                    "postgresql://mxm_dev_app:secret"
-                    "@postgres.example.invalid:5432/mxm_dev"
-                ),
-                "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": str(source_root),
-            },
-        ),
-    )
-    _patch_refdata(
-        mocker,
-        db_url=(
-            "postgresql+psycopg://mxm_dev_app:secret"
-            "@postgres.example.invalid:5432/mxm_dev"
-        ),
-        database_reachable=False,
+    report = run_preflight(
+        ctx,
     )
 
-    report = run_preflight(runtime_context)
+    assert report.checks[-1] == PreflightCheck(
+        name="database reachable",
+        passed=False,
+        message=("ConnectionError: database unavailable"),
+    )
 
-    backend_check = _get_check(report, "PostgreSQL selected")
-    connectivity_check = _get_check(report, "database reachable")
-
-    assert not report.passed
-    assert backend_check.passed
-    assert not connectivity_check.passed
-    assert "secret" not in connectivity_check.message
+    assert report.passed is False
+    assert database.check_connection_calls == 1

@@ -6,9 +6,9 @@ from datetime import date
 
 import pytest
 
-from mxm.refdata.factories import PeriodFactory
+from mxm.refdata.generation.periods import period_from_id
 from mxm.refdata.models.periods import PeriodType
-from mxm.refdata.models.products.futures_product_spec import (
+from mxm.refdata.models.products.futures_product import (
     FirstDayOfInterestRule,
     FirstDayOfInterestShiftRule,
     LastTradingRule,
@@ -173,7 +173,7 @@ def test_calculate_first_day_of_interest(
 ) -> None:
     """Calculate first days of interest for supported rule forms."""
 
-    period = PeriodFactory.get_period(
+    period = period_from_id(
         period_id=period_id,
     )
 
@@ -193,7 +193,7 @@ def test_invalid_period_type(
 ) -> None:
     """Reject contract periods other than months."""
 
-    period = PeriodFactory.get_period(
+    period = period_from_id(
         period_id="2027-Q2",
     )
 
@@ -217,7 +217,7 @@ def test_missing_month_in_rule(
 ) -> None:
     """Raise when the rule has no shift for the contract month."""
 
-    period = PeriodFactory.get_period(
+    period = period_from_id(
         period_id="Apr-2027",
     )
     rule = _first_day_rule(
@@ -245,7 +245,7 @@ def test_unsupported_reference_rule(
 ) -> None:
     """Reject an unsupported first-day reference rule."""
 
-    period = PeriodFactory.get_period(
+    period = period_from_id(
         period_id="Jun-2027",
     )
     rule = _first_day_rule(

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import date
 
-from mxm.refdata.factories.period_factory import PeriodFactory
+from mxm.refdata.generation.periods import period_containing, shift_period_by_n
 from mxm.refdata.models import Period, PeriodType
-from mxm.refdata.models.products.futures_product_spec import (
+from mxm.refdata.models.products.futures_product import (
     FirstDayOfInterestRule,
     LastTradingRule,
 )
@@ -69,19 +69,12 @@ def calculate_first_day_of_interest(
             f"month {month!r} and product_id {product_id!r}"
         ) from exc
 
-    shifted_period = PeriodFactory.shift_period_by_n(
-        period,
-        n=-shift_n,
-    )
+    shifted_period = shift_period_by_n(period, n=-shift_n)
 
     match rule.reference_rule:
         case "next_b_day_after_last_trading_day_of_december":
-            december_period = PeriodFactory.get_period(
-                date_obj=date(
-                    shifted_period.last_date.year,
-                    12,
-                    1,
-                ),
+            december_period = period_containing(
+                value=date(shifted_period.last_date.year, 12, 1),
                 period_type=rule.shift_rule.shift_period_type,
             )
 
@@ -92,12 +85,8 @@ def calculate_first_day_of_interest(
                 rule=last_trading_rule,
             )
         case "next_b_day_after_last_trading_day_of_november":
-            november_period = PeriodFactory.get_period(
-                date_obj=date(
-                    shifted_period.last_date.year,
-                    11,
-                    1,
-                ),
+            november_period = period_containing(
+                value=date(shifted_period.last_date.year, 11, 1),
                 period_type=rule.shift_rule.shift_period_type,
             )
 

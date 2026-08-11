@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import date
 
-from mxm.refdata.factories.period_factory import PeriodFactory
+from mxm.refdata.generation.periods import shift_period_by_n
 from mxm.refdata.models.periods import Period
-from mxm.refdata.models.products.futures_product_spec import LastTradingRule
+from mxm.refdata.models.products.futures_product import LastTradingRule
 from mxm.refdata.models.reference_events import ReferenceEvent
 from mxm.refdata.trading_calendars.nth_business_day import (
     get_nth_business_day_of_period,
@@ -90,7 +90,7 @@ def calculate_last_trading_day(
         The calculated last trading day.
     """
 
-    adjusted_period = PeriodFactory.shift_period_by_n(
+    adjusted_period = shift_period_by_n(
         period,
         rule.period_offset,
     )
