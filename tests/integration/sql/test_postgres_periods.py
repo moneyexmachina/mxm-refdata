@@ -1,4 +1,13 @@
-"""PostgreSQL integration tests for plain-SQL period persistence."""
+"""PostgreSQL integration tests for period SQL/schema compatibility.
+
+These tests exercise the real migrated PostgreSQL schema. They prove that the
+period SQL adapter matches that schema, that its PostgreSQL query semantics are
+correct, and that its idempotent/conflicting persistence behaviour works as
+intended.
+
+Generic transaction lifecycle is tested separately by ``PostgresDatabase`` and
+at the higher-level materialisation integration boundary.
+"""
 
 from __future__ import annotations
 
@@ -25,8 +34,16 @@ def _month_period() -> Period:
     return Period(
         period_id="2024-01",
         period_type=PeriodType.MONTH,
-        first_date=date(2024, 1, 1),
-        last_date=date(2024, 1, 31),
+        first_date=date(
+            2024,
+            1,
+            1,
+        ),
+        last_date=date(
+            2024,
+            1,
+            31,
+        ),
     )
 
 
@@ -36,8 +53,16 @@ def _quarter_period() -> Period:
     return Period(
         period_id="2024-Q1",
         period_type=PeriodType.QUARTER,
-        first_date=date(2024, 1, 1),
-        last_date=date(2024, 3, 31),
+        first_date=date(
+            2024,
+            1,
+            1,
+        ),
+        last_date=date(
+            2024,
+            3,
+            31,
+        ),
     )
 
 
@@ -47,15 +72,23 @@ def _year_period() -> Period:
     return Period(
         period_id="2024",
         period_type=PeriodType.YEAR,
-        first_date=date(2024, 1, 1),
-        last_date=date(2024, 12, 31),
+        first_date=date(
+            2024,
+            1,
+            1,
+        ),
+        last_date=date(
+            2024,
+            12,
+            31,
+        ),
     )
 
 
 def test_periods_round_trip_through_postgres(
     migrated_postgres_database: PostgresDatabase,
 ) -> None:
-    """Persist and reconstruct representative periods."""
+    """Period writes and reads match the real migrated PostgreSQL schema."""
 
     database = migrated_postgres_database
 
@@ -80,6 +113,7 @@ def test_periods_round_trip_through_postgres(
             ],
         )
 
+    with database.transaction() as connection:
         persisted_periods = fetch_periods(
             connection,
             schema=database.schema,
@@ -87,19 +121,11 @@ def test_periods_round_trip_through_postgres(
 
     assert persisted_periods == expected_periods
 
-    with database.transaction() as connection:
-        committed_periods = fetch_periods(
-            connection,
-            schema=database.schema,
-        )
 
-    assert committed_periods == expected_periods
-
-
-def test_period_type_and_range_queries_use_postgres_semantics(
+def test_period_queries_use_postgres_semantics(
     migrated_postgres_database: PostgresDatabase,
 ) -> None:
-    """Filter persisted periods by type and inclusive containment range."""
+    """Period type and date-range queries return the intended PostgreSQL rows."""
 
     database = migrated_postgres_database
 
@@ -131,15 +157,31 @@ def test_period_type_and_range_queries_use_postgres_semantics(
         first_quarter_periods = fetch_periods_in_range(
             connection,
             schema=database.schema,
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 3, 31),
+            start_date=date(
+                2024,
+                1,
+                1,
+            ),
+            end_date=date(
+                2024,
+                3,
+                31,
+            ),
         )
 
         january_periods = fetch_periods_in_range(
             connection,
             schema=database.schema,
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 1, 31),
+            start_date=date(
+                2024,
+                1,
+                1,
+            ),
+            end_date=date(
+                2024,
+                1,
+                31,
+            ),
         )
 
     assert cycle_periods == {
@@ -157,20 +199,15 @@ def test_period_type_and_range_queries_use_postgres_semantics(
     }
 
 
-def test_identical_period_insertion_is_idempotent(
+def test_period_persistence_uses_postgres_conflict_semantics(
     migrated_postgres_database: PostgresDatabase,
 ) -> None:
-    """Reinserting identical periods leaves persisted state unchanged."""
+    """Identical period state is idempotent while conflicting state is rejected."""
 
     database = migrated_postgres_database
 
     month = _month_period()
     quarter = _quarter_period()
-
-    expected_periods = {
-        month.period_id: month,
-        quarter.period_id: quarter,
-    }
 
     with database.transaction() as connection:
         insert_periods(
@@ -199,35 +236,21 @@ def test_identical_period_insertion_is_idempotent(
             schema=database.schema,
         )
 
-    assert persisted_periods == expected_periods
-
-
-def test_conflicting_period_rolls_back_complete_transaction(
-    migrated_postgres_database: PostgresDatabase,
-) -> None:
-    """A period identity conflict rolls back other writes in its transaction."""
-
-    database = migrated_postgres_database
-
-    original_month = _month_period()
+    assert persisted_periods == {
+        month.period_id: month,
+        quarter.period_id: quarter,
+    }
 
     conflicting_month = Period(
-        period_id=original_month.period_id,
-        period_type=original_month.period_type,
-        first_date=original_month.first_date,
-        last_date=date(2024, 2, 1),
+        period_id=month.period_id,
+        period_type=month.period_type,
+        first_date=month.first_date,
+        last_date=date(
+            2024,
+            2,
+            1,
+        ),
     )
-
-    additional_quarter = _quarter_period()
-
-    with database.transaction() as connection:
-        insert_periods(
-            connection,
-            schema=database.schema,
-            periods=[
-                original_month,
-            ],
-        )
 
     with pytest.raises(
         PeriodConflictError,
@@ -239,18 +262,16 @@ def test_conflicting_period_rolls_back_complete_transaction(
                 schema=database.schema,
                 periods=[
                     conflicting_month,
-                    additional_quarter,
                 ],
             )
 
     with database.transaction() as connection:
-        persisted_periods = fetch_periods(
+        persisted_after_conflict = fetch_periods(
             connection,
             schema=database.schema,
         )
 
-    assert persisted_periods == {
-        original_month.period_id: original_month,
+    assert persisted_after_conflict == {
+        month.period_id: month,
+        quarter.period_id: quarter,
     }
-
-    assert additional_quarter.period_id not in persisted_periods

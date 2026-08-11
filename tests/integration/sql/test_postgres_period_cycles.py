@@ -1,12 +1,17 @@
-"""PostgreSQL integration tests for period-cycle persistence.
+"""PostgreSQL integration tests for period-cycle SQL/schema compatibility.
 
-These tests use the shared migrated disposable-schema fixture. They exercise
-real PostgreSQL constraints, conflict handling, transaction rollback, and
-round-trip reconstruction for period cycles and their memberships.
+These tests exercise the real migrated PostgreSQL schema. They prove that the
+period-cycle SQL adapter matches that schema, that its selection operations
+have the intended PostgreSQL semantics, and that the persisted identity,
+position, and foreign-key constraints behave as required.
+
+Generic transaction lifecycle is tested separately by ``PostgresDatabase`` and
+at the higher-level materialisation integration boundary.
 """
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 
 import pytest
@@ -21,7 +26,9 @@ from mxm.refdata.models.periods import Period, PeriodType
 from mxm.refdata.sql.period_cycles import (
     PeriodCycleConflictError,
     fetch_period_cycle_memberships,
+    fetch_period_cycle_memberships_by_cycle_ids,
     fetch_period_cycles,
+    fetch_period_cycles_by_ids,
     insert_period_cycle_memberships,
     insert_period_cycles,
 )
@@ -34,52 +41,76 @@ pytestmark = pytest.mark.postgres
 def _january_period() -> Period:
     """Return the January 2024 period."""
 
-    from datetime import date
-
     return Period(
         period_id="2024-01",
         period_type=PeriodType.MONTH,
-        first_date=date(2024, 1, 1),
-        last_date=date(2024, 1, 31),
+        first_date=date(
+            2024,
+            1,
+            1,
+        ),
+        last_date=date(
+            2024,
+            1,
+            31,
+        ),
     )
 
 
 def _february_period() -> Period:
     """Return the February 2024 period."""
 
-    from datetime import date
-
     return Period(
         period_id="2024-02",
         period_type=PeriodType.MONTH,
-        first_date=date(2024, 2, 1),
-        last_date=date(2024, 2, 29),
+        first_date=date(
+            2024,
+            2,
+            1,
+        ),
+        last_date=date(
+            2024,
+            2,
+            29,
+        ),
     )
 
 
 def _march_period() -> Period:
     """Return the March 2024 period."""
 
-    from datetime import date
-
     return Period(
         period_id="2024-03",
         period_type=PeriodType.MONTH,
-        first_date=date(2024, 3, 1),
-        last_date=date(2024, 3, 31),
+        first_date=date(
+            2024,
+            3,
+            1,
+        ),
+        last_date=date(
+            2024,
+            3,
+            31,
+        ),
     )
 
 
 def _first_quarter_period() -> Period:
     """Return the first-quarter 2024 period."""
 
-    from datetime import date
-
     return Period(
         period_id="2024-Q1",
         period_type=PeriodType.QUARTER,
-        first_date=date(2024, 1, 1),
-        last_date=date(2024, 3, 31),
+        first_date=date(
+            2024,
+            1,
+            1,
+        ),
+        last_date=date(
+            2024,
+            3,
+            31,
+        ),
     )
 
 
@@ -167,7 +198,7 @@ def _first_quarter_membership() -> PeriodCycleMembership:
 def _membership_key(
     membership: PeriodCycleMembership,
 ) -> tuple[str, str]:
-    """Return the persisted primary identity of one membership."""
+    """Return the persisted identity of one cycle membership."""
 
     return (
         membership.cycle_id,
@@ -175,10 +206,10 @@ def _membership_key(
     )
 
 
-def test_period_cycles_and_memberships_round_trip_through_postgres(
+def test_period_cycles_and_memberships_round_trip_and_filter_through_postgres(
     migrated_postgres_database: PostgresDatabase,
 ) -> None:
-    """Persist and reconstruct cycles and memberships in one transaction."""
+    """Cycle writes, reads, and filtered lookups match the real schema."""
 
     database = migrated_postgres_database
 
@@ -209,137 +240,26 @@ def test_period_cycles_and_memberships_round_trip_through_postgres(
             connection,
             schema=database.schema,
             periods=[
+                january,
+                february,
                 first_quarter,
-                february,
-                january,
             ],
         )
-
         insert_period_cycles(
             connection,
             schema=database.schema,
             period_cycles=[
+                months,
                 quarters,
-                months,
             ],
         )
-
         insert_period_cycle_memberships(
             connection,
             schema=database.schema,
             memberships=[
+                january_membership,
+                february_membership,
                 quarter_membership,
-                february_membership,
-                january_membership,
-            ],
-        )
-
-        transaction_cycles = fetch_period_cycles(
-            connection,
-            schema=database.schema,
-        )
-
-        transaction_memberships = fetch_period_cycle_memberships(
-            connection,
-            schema=database.schema,
-        )
-
-    assert transaction_cycles == expected_cycles
-    assert transaction_memberships == expected_memberships
-
-    with database.transaction() as connection:
-        committed_cycles = fetch_period_cycles(
-            connection,
-            schema=database.schema,
-        )
-
-        committed_memberships = fetch_period_cycle_memberships(
-            connection,
-            schema=database.schema,
-        )
-
-    assert committed_cycles == expected_cycles
-    assert committed_memberships == expected_memberships
-
-
-def test_identical_cycle_and_membership_insertion_is_idempotent(
-    migrated_postgres_database: PostgresDatabase,
-) -> None:
-    """Replaying identical cycle state leaves persisted state unchanged."""
-
-    database = migrated_postgres_database
-
-    january = _january_period()
-    february = _february_period()
-
-    months = _calendar_months_cycle()
-
-    january_membership = _january_membership()
-    february_membership = _february_membership()
-
-    expected_cycles = {
-        months.cycle_id: months,
-    }
-
-    expected_memberships = {
-        _membership_key(january_membership): january_membership,
-        _membership_key(february_membership): february_membership,
-    }
-
-    with database.transaction() as connection:
-        insert_periods(
-            connection,
-            schema=database.schema,
-            periods=[
-                january,
-                february,
-            ],
-        )
-
-        insert_period_cycles(
-            connection,
-            schema=database.schema,
-            period_cycles=[
-                months,
-            ],
-        )
-
-        insert_period_cycle_memberships(
-            connection,
-            schema=database.schema,
-            memberships=[
-                january_membership,
-                february_membership,
-            ],
-        )
-
-    with database.transaction() as connection:
-        insert_periods(
-            connection,
-            schema=database.schema,
-            periods=[
-                february,
-                january,
-                january,
-            ],
-        )
-
-        insert_period_cycles(
-            connection,
-            schema=database.schema,
-            period_cycles=[
-                months,
-                months,
-            ],
-        )
-
-        insert_period_cycle_memberships(
-            connection,
-            schema=database.schema,
-            memberships=[
-                february_membership,
-                january_membership,
-                january_membership,
             ],
         )
 
@@ -348,39 +268,73 @@ def test_identical_cycle_and_membership_insertion_is_idempotent(
             connection,
             schema=database.schema,
         )
-
+        selected_cycles = fetch_period_cycles_by_ids(
+            connection,
+            schema=database.schema,
+            cycle_ids=[
+                "MISSING_CYCLE",
+                months.cycle_id,
+                months.cycle_id,
+            ],
+        )
         persisted_memberships = fetch_period_cycle_memberships(
             connection,
             schema=database.schema,
         )
+        selected_memberships = fetch_period_cycle_memberships_by_cycle_ids(
+            connection,
+            schema=database.schema,
+            cycle_ids=[
+                quarters.cycle_id,
+                quarters.cycle_id,
+            ],
+        )
 
     assert persisted_cycles == expected_cycles
+
+    assert selected_cycles == {
+        months.cycle_id: months,
+    }
+
     assert persisted_memberships == expected_memberships
 
+    assert selected_memberships == {
+        _membership_key(quarter_membership): quarter_membership,
+    }
 
-def test_conflicting_cycle_rolls_back_other_cycle_inserts(
+
+def test_period_cycle_persistence_uses_postgres_conflict_semantics(
     migrated_postgres_database: PostgresDatabase,
 ) -> None:
-    """A cycle identity conflict rolls back new cycles in its transaction."""
+    """Identical cycle state is idempotent while conflicting state is rejected."""
 
     database = migrated_postgres_database
 
-    original_months = _calendar_months_cycle()
-    conflicting_months = _calendar_months_cycle(
-        name="Changed Calendar Months",
-        cycle_size=11,
-    )
-
-    quarters = _calendar_quarters_cycle()
+    months = _calendar_months_cycle()
 
     with database.transaction() as connection:
         insert_period_cycles(
             connection,
             schema=database.schema,
             period_cycles=[
-                original_months,
+                months,
             ],
         )
+
+    with database.transaction() as connection:
+        insert_period_cycles(
+            connection,
+            schema=database.schema,
+            period_cycles=[
+                months,
+                months,
+            ],
+        )
+
+    conflicting_months = _calendar_months_cycle(
+        name="Changed Calendar Months",
+        cycle_size=11,
+    )
 
     with pytest.raises(
         PeriodCycleConflictError,
@@ -391,7 +345,6 @@ def test_conflicting_cycle_rolls_back_other_cycle_inserts(
                 connection,
                 schema=database.schema,
                 period_cycles=[
-                    quarters,
                     conflicting_months,
                 ],
             )
@@ -403,92 +356,14 @@ def test_conflicting_cycle_rolls_back_other_cycle_inserts(
         )
 
     assert persisted_cycles == {
-        original_months.cycle_id: original_months,
+        months.cycle_id: months,
     }
 
-    assert quarters.cycle_id not in persisted_cycles
 
-
-def test_membership_identity_conflict_rolls_back_other_membership_inserts(
+def test_period_cycle_membership_persistence_uses_postgres_conflict_semantics(
     migrated_postgres_database: PostgresDatabase,
 ) -> None:
-    """A primary-identity conflict rolls back other membership writes."""
-
-    database = migrated_postgres_database
-
-    january = _january_period()
-    february = _february_period()
-    months = _calendar_months_cycle()
-
-    original_january = _january_membership(
-        cycle_element=1,
-    )
-
-    conflicting_january = _january_membership(
-        cycle_element=3,
-    )
-
-    new_february = _february_membership(
-        cycle_element=2,
-    )
-
-    with database.transaction() as connection:
-        insert_periods(
-            connection,
-            schema=database.schema,
-            periods=[
-                january,
-                february,
-            ],
-        )
-
-        insert_period_cycles(
-            connection,
-            schema=database.schema,
-            period_cycles=[
-                months,
-            ],
-        )
-
-        insert_period_cycle_memberships(
-            connection,
-            schema=database.schema,
-            memberships=[
-                original_january,
-            ],
-        )
-
-    with pytest.raises(
-        PeriodCycleConflictError,
-        match=r"membership conflicts.*identity",
-    ):
-        with database.transaction() as connection:
-            insert_period_cycle_memberships(
-                connection,
-                schema=database.schema,
-                memberships=[
-                    new_february,
-                    conflicting_january,
-                ],
-            )
-
-    with database.transaction() as connection:
-        persisted_memberships = fetch_period_cycle_memberships(
-            connection,
-            schema=database.schema,
-        )
-
-    assert persisted_memberships == {
-        _membership_key(original_january): original_january,
-    }
-
-    assert _membership_key(new_february) not in persisted_memberships
-
-
-def test_membership_position_conflict_rolls_back_other_membership_inserts(
-    migrated_postgres_database: PostgresDatabase,
-) -> None:
-    """A unique-position conflict rolls back other membership writes."""
+    """Membership identity and cycle-position conflicts are both rejected."""
 
     database = migrated_postgres_database
 
@@ -497,17 +372,8 @@ def test_membership_position_conflict_rolls_back_other_membership_inserts(
     march = _march_period()
     months = _calendar_months_cycle()
 
-    original_january = _january_membership(
-        cycle_element=1,
-    )
-
-    conflicting_february = _february_membership(
-        cycle_element=1,
-    )
-
-    new_march = _march_membership(
-        cycle_element=2,
-    )
+    january_membership = _january_membership()
+    february_membership = _february_membership()
 
     with database.transaction() as connection:
         insert_periods(
@@ -519,7 +385,6 @@ def test_membership_position_conflict_rolls_back_other_membership_inserts(
                 march,
             ],
         )
-
         insert_period_cycles(
             connection,
             schema=database.schema,
@@ -527,14 +392,46 @@ def test_membership_position_conflict_rolls_back_other_membership_inserts(
                 months,
             ],
         )
-
         insert_period_cycle_memberships(
             connection,
             schema=database.schema,
             memberships=[
-                original_january,
+                january_membership,
+                february_membership,
             ],
         )
+
+    with database.transaction() as connection:
+        insert_period_cycle_memberships(
+            connection,
+            schema=database.schema,
+            memberships=[
+                february_membership,
+                january_membership,
+                january_membership,
+            ],
+        )
+
+    conflicting_identity = _january_membership(
+        cycle_element=3,
+    )
+
+    with pytest.raises(
+        PeriodCycleConflictError,
+        match=r"membership conflicts.*identity",
+    ):
+        with database.transaction() as connection:
+            insert_period_cycle_memberships(
+                connection,
+                schema=database.schema,
+                memberships=[
+                    conflicting_identity,
+                ],
+            )
+
+    conflicting_position = _march_membership(
+        cycle_element=2,
+    )
 
     with pytest.raises(
         PeriodCycleConflictError,
@@ -545,8 +442,7 @@ def test_membership_position_conflict_rolls_back_other_membership_inserts(
                 connection,
                 schema=database.schema,
                 memberships=[
-                    conflicting_february,
-                    new_march,
+                    conflicting_position,
                 ],
             )
 
@@ -557,11 +453,9 @@ def test_membership_position_conflict_rolls_back_other_membership_inserts(
         )
 
     assert persisted_memberships == {
-        _membership_key(original_january): original_january,
+        _membership_key(january_membership): january_membership,
+        _membership_key(february_membership): february_membership,
     }
-
-    assert _membership_key(conflicting_february) not in persisted_memberships
-    assert _membership_key(new_march) not in persisted_memberships
 
 
 @pytest.mark.parametrize(
@@ -571,11 +465,14 @@ def test_membership_position_conflict_rolls_back_other_membership_inserts(
         "period",
     ],
 )
-def test_membership_foreign_keys_are_enforced(
+def test_period_cycle_membership_foreign_keys_are_enforced(
     migrated_postgres_database: PostgresDatabase,
-    missing_reference: Literal["cycle", "period"],
+    missing_reference: Literal[
+        "cycle",
+        "period",
+    ],
 ) -> None:
-    """PostgreSQL rejects memberships with missing parent records."""
+    """The real schema rejects memberships whose parent records are absent."""
 
     database = migrated_postgres_database
 
@@ -610,11 +507,3 @@ def test_membership_foreign_keys_are_enforced(
                     membership,
                 ],
             )
-
-    with database.transaction() as connection:
-        persisted_memberships = fetch_period_cycle_memberships(
-            connection,
-            schema=database.schema,
-        )
-
-    assert persisted_memberships == {}
