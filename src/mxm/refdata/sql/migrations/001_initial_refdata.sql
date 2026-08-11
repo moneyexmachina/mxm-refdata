@@ -257,7 +257,7 @@ CREATE TABLE {schema}.futures_contracts (
         CHECK (currency <> ''),
 
     CONSTRAINT futures_contracts_trading_calendar_non_empty
-        CHECK (trading_calendar <> '')
+        CHECK (trading_calendar <> ''),
     CONSTRAINT futures_contracts_product_period_unique
         UNIQUE (product_id, period_id),
     CONSTRAINT futures_contracts_interest_date_order
