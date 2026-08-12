@@ -22,7 +22,6 @@ Issues = "https://github.com/moneyexmachina/mxm-refdata/issues"
 [tool.poetry.dependencies]
 python = ">=3.13,<3.15"
 pandas = ">=2.3.3,<3.0.0"
-sqlalchemy = ">=2.0.43,<3.0.0"
 exchange-calendars = ">=4.11.1,<5.0.0"
 typer = "^0.25.1"
 rich = "^15.0.0"
