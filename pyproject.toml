@@ -72,6 +72,7 @@ addopts = "-q"
 pythonpath = ["src"]
 markers = [
     "postgres: tests requiring a real PostgreSQL instance",
+    "acceptance: tests requiring the private MXM deployment, configuration, and curated data",
 ]
 filterwarnings = [
     "ignore:The 'generic' unit for NumPy timedelta is deprecated.*:DeprecationWarning:exchange_calendars\\.utils\\.pandas_utils",
