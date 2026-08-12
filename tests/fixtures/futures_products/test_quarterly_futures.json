@@ -1,0 +1,64 @@
+{
+  "schema_version": "futures_product.v1",
+  "product_id": "test_quarterly_futures",
+  "asset_class": "futures",
+  "source_status": {
+    "created_at": "2026-08-12",
+    "updated_at": "2026-08-12",
+    "review_status": "test_fixture",
+    "curator": "mxm"
+  },
+  "provenance": {
+    "source_type": "synthetic_test_fixture",
+    "source_url": "https://example.invalid/mxm/test-quarterly-futures",
+    "source_accessed_at": "2026-08-12",
+    "curation_method": "synthetic_fixture_authored_for_integration_testing",
+    "assistance": "none",
+    "notes": [
+      "Synthetic product definition used only for mxm-refdata integration testing.",
+      "This fixture is not derived from or intended to represent an exchange-listed product.",
+      "Quarterly contract months are March, June, September, and December."
+    ]
+  },
+  "product": {
+    "product_id": "test_quarterly_futures",
+    "venue": "TEST",
+    "description": "Synthetic Quarterly Futures",
+    "currency": "USD",
+    "unit": "GBP",
+    "contract_size": 1000,
+    "valid_period_rule": "HMUZ",
+    "listing_rule": "Synthetic quarterly contracts in March, June, September, and December.",
+    "period_types": "MONTH",
+    "settlement": "PHYSICAL",
+    "last_trading_rule": "Trading terminates two business days before the third Wednesday of the contract month.",
+    "expiry_rule": "Two business days before the third Wednesday of the contract month.",
+    "trading_calendar": "CMES",
+    "trading_hours": null,
+    "tick_size": null,
+    "tick_value": null,
+    "initial_margin": null,
+    "maintenance_margin": null
+  },
+  "parsed_rules": {
+    "first_day_of_interest_rule": {
+      "shift_rule": {
+        "shift_period_type": "MONTH",
+        "n_shift": {
+          "Mar": 6,
+          "Jun": 6,
+          "Sep": 6,
+          "Dec": 6
+        }
+      },
+      "reference_rule": "next_b_day_after_period"
+    },
+    "last_trading_rule": {
+      "period_offset": 0,
+      "reference_event": "weekday_of_period",
+      "n_reference": 3,
+      "weekday": "Wednesday",
+      "business_day_offset": -2
+    }
+  }
+}
