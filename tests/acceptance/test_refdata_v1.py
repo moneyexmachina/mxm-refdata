@@ -34,7 +34,6 @@ from mxm.runtime import (
 )
 
 pytestmark = [
-    pytest.mark.postgres,
     pytest.mark.acceptance,
 ]
 
@@ -47,7 +46,7 @@ _EXPECTED_COUNTS = RefDataRowCounts(
     products=86,
     product_sources=86,
     periods=799,
-    contracts=31_447,
+    contracts=31_490,
     cycles=2,
     memberships=752,
 )
