@@ -5,193 +5,276 @@
 ![Python](https://img.shields.io/badge/python-3.13+-blue)
 [![Checked with pyright](https://microsoft.github.io/pyright/img/pyright_badge.svg)](https://microsoft.github.io/pyright/)
 
-Reference-data ontology and contract-generation framework for the Money Ex Machina (MXM) ecosystem.
+Reference-data generation, materialisation, and read access for the Money Ex Machina (MXM) ecosystem.
 
-`mxm-refdata` provides deterministic definitions of futures products, futures contracts, periods, lifecycle dates, and trading-calendar relationships. It materialises these definitions into a queryable reference-data store and exposes them through a typed Python API.
+`mxm-refdata` defines deterministic futures products, contracts, periods, lifecycle dates, and trading-calendar relationships. It materialises the resulting operational reference state into PostgreSQL and exposes it through typed application and read-only interfaces.
 
-The package is intended to answer questions such as:
+It is intended to answer questions such as:
 
-```
+```text
 What futures products exist?
 
-What contracts should exist for a given product?
+What contracts exist for a product?
 
 When does a contract become active?
 
-When is the last trading day?
+When is its last trading day?
 
-Which contract is active on a given date?
+Which contracts are active on a given date?
+
+Which source specification produced this operational state?
 ```
 
 without depending on any market-data vendor.
 
+For the full architectural specification, see [`docs/design.md`](docs/design.md).
+
 ## Purpose
 
-`mxm-refdata` defines financial reference objects and the rules by which they are constructed.
+Reference data describes the identity and lifecycle of financial instruments.
 
 For example:
 
+```text
+cme_eurusd_futures.Mar-2032
 ```
-cme_gbp_futures.Mar-2032
-```
 
-is not stored as a static object. Instead it is deterministically derived from:
+is deterministically derived from:
 
-- a product specification,
-- listing rules,
-- period definitions,
-- period-cycle membership,
-- trading-calendar semantics,
-- and lifecycle rules.
+- a futures-product specification;
+- period definitions;
+- valid contract months;
+- trading-calendar semantics;
+- first-day-of-interest rules;
+- last-trading-day rules.
 
-This allows downstream systems to reason about contracts independently of any particular data vendor. Observed prices, quotes, trades, and exchange events belong to separate packages such as `mxm-marketdata`.
+Observed prices, quotes, trades, settlements, and vendor histories are separate concerns and belong in packages such as `mxm-marketdata`.
 
 ## Architecture
 
-`mxm-refdata` consists of three conceptual layers.
+The principal reference-data path is:
 
-### Product specifications
+```text
+mxm-refdata-source
+        ↓
+source adapter
+        ↓
+FuturesProduct + provenance
+        ↓
+deterministic generation
+        ↓
+desired reference-data state
+        ↓
+plain-SQL PostgreSQL materialisation
+        ↓
+RefDataReader
+        ↓
+downstream MXM applications
+```
 
-Human-authored definitions describing:
+Runtime construction is explicit:
 
-- products,
-- contract sizes,
-- listing rules,
-- lifecycle rules,
-- trading calendars,
-- and valid period structures.
+```text
+RuntimeIdentity
+        ↓
+RuntimeContext
+        ↓
+composition
+        ↓
+RefData
+```
 
-**Canonical source:** All specifications are now sourced from the dedicated **`mxm-refdata-source`** repository as JSON files, one per product, each containing full provenance metadata and parsed rules.
+### Authoritative source
 
-**Legacy CSV snapshots** are retained only for demonstration and testing purposes; they are not used in the production pipeline.
+Curated futures-product specifications live in the Git-controlled `mxm-refdata-source` repository.
 
-### Composition and object graph
+PostgreSQL stores the operational materialised state together with provenance such as source identity, digest, metadata, and source-repository revision.
 
-The **composition layer** constructs the in-memory object graph representing the MXM reference data system:
+The canonical source specification remains in `mxm-refdata-source`; it is not duplicated as a second canonical copy inside PostgreSQL.
 
-- factories,
-- registries,
-- DB connections,
-- caches,
-- and query interfaces.
+### Generation
 
-This object graph is encapsulated in the `RefData` class and is the canonical runtime representation of the system. The composition layer is implemented in `composition.py` (or similar) and receives a fully resolved `RuntimeContext` from `mxm-runtime`.
+Period and futures-contract generation is deterministic and stateless where practical.
 
-### Application entrypoints
+Contract identity follows:
 
-Applications invoke the composition layer to operate the system:
+```text
+{product_id}.{period_id}
+```
 
-- `cli.py` for command-line interaction
-- `api.py` as a query façade (read-only access)
-- future batch or service scripts
+for example:
 
-Each entrypoint leverages the same composed `RefData` object graph; the graph is never independently reconstructed per entrypoint.
+```text
+cbot_10_year_us_treasury_note_futures.Dec-2046
+```
 
-## Deterministic generation
+### Application capabilities
 
-Generation services construct:
+`RefData` is the complete composed application capability. It exposes:
 
-- periods,
-- period cycles,
-- futures products,
-- futures contracts,
-- first day of interest,
-- and last trading day.
+```text
+build()
+rebuild()
+diagnostics()
+reader
+```
 
-The generation pipeline consumes JSON definitions from `mxm-refdata-source`, ensuring reproducibility and determinism.
+`RefDataReader` is the restricted read-only capability intended for downstream consumers.
 
-## Materialised reference store
+### Persistence
 
-Generated entities are persisted into a reference-data database.
+Operational structured reference data is stored in PostgreSQL using:
 
-- Current implementation: **SQLite**
-- Future deployments: PostgreSQL through the same service layer
+```text
+Psycopg 3
++ explicit SQL
++ version-controlled SQL migrations
+```
 
-## CLI Usage
+`mxm-refdata` owns the PostgreSQL schema:
 
-Create a reference database:
+```text
+refdata
+```
+
+There is no SQLAlchemy ORM or SQLite persistence path in the accepted runtime architecture.
+
+## Materialisation lifecycle
+
+Reference data is deterministic derived state.
+
+### Build
+
+```text
+construct desired state
+→ migrate if required
+→ persist non-destructively
+```
+
+Equivalent repeated builds are idempotent and do not create duplicate authoritative state.
+
+### Rebuild
+
+```text
+construct desired state
+→ validate owned schema
+→ drop owned schema
+→ apply migrations
+→ rematerialise
+```
+
+`rebuild` is intentionally destructive only within the owned reference-data schema.
+
+Desired state is constructed before destructive reset.
+
+## CLI
+
+The CLI operates through the resolved MXM runtime context. Database credentials, source roots, and operational configuration are not passed as ad hoc command-line overrides.
+
+Check prerequisites:
 
 ```bash
-mxm-refdata rebuild \
-  --db-url sqlite:////tmp/mxm-refdata.db \
-  --contract-start-date 2024-01-01 \
-  --contract-end-date 2026-12-31
+mxm-refdata preflight
 ```
 
-List products:
+Materialise reference data non-destructively:
 
 ```bash
-mxm-refdata products \
-  --db-url sqlite:////tmp/mxm-refdata.db
+mxm-refdata build
 ```
 
-Inspect contract coverage:
+Recreate the owned reference-data schema from deterministic source state:
 
 ```bash
-mxm-refdata coverage \
-  --db-url sqlite:////tmp/mxm-refdata.db
+mxm-refdata rebuild
 ```
 
-Run operational smoke checks:
+Run operational readiness checks:
 
 ```bash
-mxm-refdata smokecheck \
-  --db-url sqlite:////tmp/mxm-refdata.db
+mxm-refdata smokecheck
 ```
 
-> The CLI operates on the JSON-sourced reference universe. CSVs are used only for demos or testing.
+Inspect the materialised universe:
 
-## Python API
-
-```python
-from datetime import date
-from mxm.refdata import RefDataAPI
-
-api = RefDataAPI.from_config_data(
-    {
-        "SQL_DB_URL": "sqlite:////tmp/mxm-refdata.db",
-        "REFDATA_FUTURES_PRODUCTS_JSON_ROOT": "/home/mxm/mxm-refdata-source/products/futures",
-    }
-)
-
-products = api.get_all_products()
-
-contracts = api.get_contracts_for_product("cme_gbp_futures")
-
-active_contracts = api.get_active_contracts(as_of_date=date(2026, 5, 1))
+```bash
+mxm-refdata products
+mxm-refdata product cme_eurusd_futures
+mxm-refdata contracts cme_eurusd_futures
+mxm-refdata coverage
 ```
 
-## Configuration
+Inspect active contracts using the supported `active` command:
 
-Primary configuration fields:
-
-```
-SQL_DB_URL
-REFDATA_DB_MODE
-REFDATA_FUTURES_PRODUCTS_JSON_ROOT
-REFDATA_CONTRACT_START_DATE
-REFDATA_CONTRACT_END_DATE
+```bash
+mxm-refdata active --help
 ```
 
-### Buildable mode
+## Python usage
 
-```
-REFDATA_DB_MODE=buildable
-```
+Applications should obtain reference data through the normal MXM composition boundary.
 
-- Database treated as deterministic derived state
-- Automatic materialisation allowed if empty
-- Intended for development, CI, local experimentation, bootstrap
+Conceptually:
 
-### Managed mode
-
-```
-REFDATA_DB_MODE=managed
+```text
+RuntimeContext
+→ build_refdata(ctx)
+→ RefData
 ```
 
-- Automatic materialisation disabled
-- Reference database must be created and maintained explicitly
-- Intended for operational deployments
+Downstream code that needs read access only should depend on:
+
+```text
+RefDataReader
+```
+
+rather than constructing database or configuration dependencies independently.
+
+The detailed application and composition boundaries are documented in [`docs/design.md`](docs/design.md).
+
+## Runtime configuration
+
+Runtime configuration is resolved through the MXM runtime and configuration systems.
+
+The composition root resolves:
+
+- the `mxm_refdata` configuration view;
+- the authoritative futures-product source root;
+- the configured contract horizon;
+- the `operational_state` PostgreSQL target;
+- database credentials through the runtime secrets capability.
+
+Lower application layers receive concrete resolved dependencies and do not resolve runtime secrets or deployment configuration themselves.
+
+## Current V1 operational scope
+
+The current configured V1 deployment covers futures on:
+
+```text
+CBOT
+CME
+COMEX
+NYMEX
+```
+
+The accepted V1 materialisation currently contains:
+
+```text
+products:          86
+product_sources:   86
+periods:           799
+contracts:      31,490
+cycles:              2
+memberships:        752
+```
+
+The configured contract horizon is:
+
+```text
+2000–2046 inclusive
+```
+
+These counts describe the currently accepted MXM V1 deployment rather than universal package constants.
 
 ## Development
 
@@ -201,11 +284,45 @@ Install dependencies:
 poetry install
 ```
 
-Run full validation suite:
+Run the standard validation suite:
 
 ```bash
 make check
 ```
+
+This runs the tests that require neither PostgreSQL nor the private product-source repository.
+
+### PostgreSQL integration
+
+On `monolith`:
+
+```bash
+poetry run pytest -q -m postgres
+```
+
+These tests use real PostgreSQL, disposable schemas, and synthetic public fixtures.
+
+They verify:
+
+- migrations;
+- schema constraints;
+- SQL adapters;
+- materialisation;
+- Reader behaviour;
+- diagnostics;
+- lifecycle semantics.
+
+### Private deployment acceptance
+
+On `monolith`:
+
+```bash
+poetry run pytest -q -m acceptance
+```
+
+This uses the real MXM runtime, configuration, secrets, private `mxm-refdata-source`, and PostgreSQL target while materialising into a disposable acceptance schema.
+
+It verifies the complete configured V1 universe independently from the operational `refdata` schema.
 
 Repository compliance:
 
@@ -213,41 +330,38 @@ Repository compliance:
 mxm-foundry check .
 ```
 
+## Package boundaries
+
+`mxm-refdata` owns:
+
+- reference-data domain models;
+- futures-product source interpretation;
+- deterministic period and contract generation;
+- trading-calendar lifecycle calculations;
+- PostgreSQL reference-data persistence;
+- materialisation lifecycle;
+- read semantics;
+- readiness diagnostics;
+- runtime composition;
+- the reference-data CLI.
+
+It does not own:
+
+- market data;
+- broker or exchange acquisition clients;
+- portfolio construction;
+- signals;
+- risk;
+- execution;
+- workflow orchestration;
+- the broader MXM operation-level provenance system.
+
+See [`docs/design.md`](docs/design.md) for the detailed boundary definitions and design principles.
+
 ## Documentation
 
-```
-docs/design.md
-```
-
-## Roadmap
-
-### v0
-
-- Futures product definitions
-- Deterministic futures contract generation
-- Trading-calendar integration
-- Period and period-cycle models
-- Materialised reference-data store
-- Typed Python API
-- Operational CLI
-- Smoke-check framework
-
-### v1
-
-- Expanded futures coverage
-- Richer lifecycle-rule models
-- Explicit calendar abstractions
-- Stronger operational tooling
-- Improved ontology documentation
-
-### v2
-
-- ETF support
-- FX support
-- Historical rule evolution
-- Governance and reconciliation workflows
-- Integration with future MXM calendar services
-- Multi-venue reference-data management
+- [`docs/design.md`](docs/design.md) — current architecture and design principles
+- [`CHANGELOG.md`](CHANGELOG.md) — repository changes by release / unreleased state
 
 ## License
 

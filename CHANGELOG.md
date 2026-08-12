@@ -7,15 +7,84 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 ## Unreleased
 
 ### Added
-- (none)
+
+- Plain-SQL PostgreSQL persistence through Psycopg 3.
+- Version-controlled PostgreSQL schema migrations with migration identity,
+  checksums, application, and current/pending inspection.
+- Explicit `PostgresDatabase` connection and transaction boundary.
+- `RefDataReader` as the restricted read-only reference-data capability for
+  downstream applications.
+- Application-level reference-data diagnostics and PostgreSQL-backed
+  `smokecheck` readiness checks.
+- Product-source provenance persistence, including source-relative identity,
+  content digest, source metadata, and `mxm-refdata-source` Git revision.
+- PostgreSQL integration tests using disposable schemas and synthetic public
+  product fixtures.
+- Separate private deployment acceptance tests using the real MXM runtime,
+  configuration, product-source repository, and complete configured V1
+  universe.
 
 ### Changed
-- (none)
+
+- Replaced the SQLAlchemy/SQLite persistence architecture with explicit
+  Psycopg/PostgreSQL persistence.
+- Refactored application construction around the accepted
+  `RuntimeContext → composition → RefData` boundary.
+- Refactored period and futures-contract construction toward explicit,
+  stateless generation rather than factory-managed identity and caching.
+- Reworked materialisation around complete desired-state construction followed
+  by one explicit persistence transaction.
+- Defined distinct lifecycle semantics:
+  - `build` performs non-destructive, idempotent materialisation;
+  - `rebuild` resets only the owned `refdata` schema, reapplies migrations,
+    and rematerialises the configured universe.
+- Moved the canonical product-specification authority fully to the
+  Git-controlled `mxm-refdata-source` repository; PostgreSQL stores operational
+  domain state and source provenance rather than a duplicate canonical source
+  document.
+- Reworked tests into separate standard, PostgreSQL integration, and private
+  deployment acceptance lanes.
+- Updated operational V1 acceptance to the complete configured 2000–2046
+  futures universe:
+  - 86 products;
+  - 86 product-source provenance records;
+  - 799 periods;
+  - 31,490 futures contracts;
+  - 2 canonical period cycles;
+  - 752 cycle memberships.
+- Updated `docs/design.md` and `README.md` to describe the current PostgreSQL,
+  application, source, and testing architecture.
+
+### Removed
+
+- SQLAlchemy runtime dependency.
+- `SQLSessionManager` and the legacy database/session abstraction.
+- SQLAlchemy ORM persistence models and ORM mapping layer.
+- Legacy SQLite operational persistence path.
+- Obsolete factory/query/application abstractions superseded by the current
+  generation, Reader, and materialisation boundaries.
+- Legacy packaged CSV and trading-rule data in the old source format.
 
 ### Fixed
-- (none)
 
----
+- Reference-data materialisation is now atomic across the complete persistence
+  operation: late persistence failures roll back earlier mutations.
+- Destructive rebuild operations are explicitly bounded to the owned
+  reference-data schema.
+- Migration and materialisation state no longer depends on implicit ORM schema
+  creation, session behaviour, or ambient PostgreSQL search-path assumptions.
+
+### Tests
+
+- Added PostgreSQL migration, constraint, foreign-key, JSONB, persistence, and
+  conflict-semantics integration coverage.
+- Added application integration coverage for complete materialisation,
+  `RefDataReader`, diagnostics, repeated-build idempotency, transaction
+  rollback, and bounded rebuild.
+- Added complete private V1 deployment acceptance through the real
+  `RuntimeContext`, `mxm-config-store`, `mxm-refdata-source`, and PostgreSQL
+  target.
+
 ## v0.4.1 — 2026-07-01
 
 ### Added
