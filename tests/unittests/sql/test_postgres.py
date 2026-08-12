@@ -176,7 +176,7 @@ def _make_database(
 # ---------------------------------------------------------------------
 
 
-def test_normalises_sqlalchemy_psycopg_connection_url() -> None:
+def test_normalises_connection_url() -> None:
     connection = FakeConnection()
     database, connect_factory = _make_database(
         connection,
