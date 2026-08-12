@@ -40,7 +40,7 @@ from mxm.refdata.sql.postgres import PostgresDatabase
 pytestmark = pytest.mark.postgres
 
 _FIXTURE_SOURCE_ROOT = (
-    Path(__file__).resolve().parents[2] / "fixtures" / "futures_products"
+    Path(__file__).resolve().parents[1] / "fixtures" / "futures_products"
 )
 
 _PRODUCT_ID = "test_quarterly_futures"
