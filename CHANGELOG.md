@@ -6,6 +6,8 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 
 ## Unreleased
 
+## [0.5.0] - 2026-08-31
+
 ### Added
 
 - Plain-SQL PostgreSQL persistence through Psycopg 3.
@@ -23,6 +25,13 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 - Separate private deployment acceptance tests using the real MXM runtime,
   configuration, product-source repository, and complete configured V1
   universe.
+#### Prior - 2026-07-31
+- Support for sourcing futures product definitions from the dedicated `mxm-refdata-source` repository (JSON-based) instead of CSV.
+- Recursive JSON parsing for multiple product files, including provenance and parsed rules.
+- `FuturesProductFactory` method updated to initialise from JSON.
+- Equivalence tests added to validate consistency between legacy CSV snapshots and JSON ingestion.
+- CLI and Python API updated to consume JSON-sourced reference data.
+
 
 ### Changed
 
@@ -54,6 +63,11 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
   - 752 cycle memberships.
 - Updated `docs/design.md` and `README.md` to describe the current PostgreSQL,
   application, source, and testing architecture.
+#### Prior - 2026-07-31
+- `RefDataConfigData` now uses `REFDATA_FUTURES_PRODUCTS_JSON_ROOT` instead of CSV path.
+- Deprecated CSV ingestion in production; CSV retained only for demos and testing.
+- Refactored factory and API layers to remove references to CSV as a canonical source.
+- Tests and fixtures updated to use JSON root paths.
 
 ### Removed
 
@@ -73,6 +87,12 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
   reference-data schema.
 - Migration and materialisation state no longer depends on implicit ORM schema
   creation, session behaviour, or ambient PostgreSQL search-path assumptions.
+#### Prior - 2026-07-31
+- Runtime path resolution for JSON ingestion clarified via configuration.
+- Minor parsing fixes to ensure proper type handling from JSON files.
+
+> **Note:** Object graph construction for CLI, API, and runtime composition, as well as fully integrated mxm-runtime config resolution, remains to be implemented. This will be addressed in **session_48f**.
+
 
 ### Tests
 
@@ -84,27 +104,6 @@ The format is based on **Keep a Changelog**, and this project adheres to **Seman
 - Added complete private V1 deployment acceptance through the real
   `RuntimeContext`, `mxm-config-store`, `mxm-refdata-source`, and PostgreSQL
   target.
-
-## v0.4.1 — 2026-07-01
-
-### Added
-- Support for sourcing futures product definitions from the dedicated `mxm-refdata-source` repository (JSON-based) instead of CSV.
-- Recursive JSON parsing for multiple product files, including provenance and parsed rules.
-- `FuturesProductFactory` method updated to initialise from JSON.
-- Equivalence tests added to validate consistency between legacy CSV snapshots and JSON ingestion.
-- CLI and Python API updated to consume JSON-sourced reference data.
-
-### Changed
-- `RefDataConfigData` now uses `REFDATA_FUTURES_PRODUCTS_JSON_ROOT` instead of CSV path.
-- Deprecated CSV ingestion in production; CSV retained only for demos and testing.
-- Refactored factory and API layers to remove references to CSV as a canonical source.
-- Tests and fixtures updated to use JSON root paths.
-
-### Fixed
-- Runtime path resolution for JSON ingestion clarified via configuration.
-- Minor parsing fixes to ensure proper type handling from JSON files.
-
-> **Note:** Object graph construction for CLI, API, and runtime composition, as well as fully integrated mxm-runtime config resolution, remains to be implemented. This will be addressed in **session_48f**.
 
 ## [0.4.0] - 2026-06-23
 

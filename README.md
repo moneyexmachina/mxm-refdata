@@ -217,9 +217,9 @@ Applications should obtain reference data through the normal MXM composition bou
 Conceptually:
 
 ```text
-RuntimeContext
-→ build_refdata(ctx)
-→ RefData
+from mxm.refdata import RefData, build_refdata
+
+refdata: RefData = build_refdata(ctx)
 ```
 
 Downstream code that needs read access only should depend on:
